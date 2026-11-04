@@ -4,13 +4,16 @@ ControlZ-style **Rooms and Tiles** for Home Assistant: Lovelace custom cards plu
 
 ![All Rooms](https://raw.githubusercontent.com/brientim/controlz-ha/main/dev/screenshots/sliders-all-rooms.png)
 
-## Install with HACS
+## Install
 
-1. In Home Assistant open **HACS**, then the three-dot menu → **Custom repositories**.
-2. Add `https://github.com/brientim/controlz-ha` with type **Dashboard**.
-3. Open **ControlZ HA** in HACS and select **Download**, then reload your browser.
+[![Open your Home Assistant instance and open this repository.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=brientim&repository=controlz-ha&category=plugin)
 
-HACS adds the dashboard resource for you (Lovelace storage mode, the default).
+The button opens ControlZ HA in your Home Assistant and offers to add it as a custom repository. It works with both stores:
+
+- **Home Assistant 2026.11 and newer — Marketplace.** HACS is built into Home Assistant as **Settings → Marketplace**. Select **Download**, then reload your browser. Updates appear under **Settings → Updates**.
+- **Home Assistant 2026.10 and older — HACS.** In **HACS**, three-dot menu → **Custom repositories**, add `https://github.com/brientim/controlz-ha` with type **Dashboard**, then open **ControlZ HA**, select **Download**, and reload your browser.
+
+Either store adds the dashboard resource for you (Lovelace storage mode, the default). Upgrading from HACS to 2026.11 moves an existing install to the Marketplace automatically. Because ControlZ HA is added from a link (not the default catalog), the store checks GitHub for new releases about every 48 hours, and needs a GitHub connection to do so.
 
 ### Create the ControlZ dashboard
 
@@ -51,7 +54,7 @@ Unavailable devices, hidden entities and diagnostic entities never raise the ban
 
 ### Manual install
 
-Download `controlz-ha.js` from the [latest release](https://github.com/brientim/controlz-ha/releases/latest), copy it to `config/www/`, and add `/local/controlz-ha.js` as a **JavaScript module** under **Settings → Dashboards → Resources**.
+Download `controlz-ha.js` from the [latest release](https://github.com/brientim/controlz-ha/releases/latest), copy it to `config/www/`, and add `/local/controlz-ha.js` as a **JavaScript module** under **Settings → Dashboards → Resources**. Don't combine this with a Marketplace / HACS install, or two copies of the cards load.
 
 ## What you get
 
@@ -159,10 +162,10 @@ npm run serve       # then open http://127.0.0.1:8765/dev/harness.html
 export HA_TOKEN='...' HA_URL='http://homeassistant.local:8123'
 export HA_WWW_SCP_TARGET='root@homeassistant.local:/config/www/'
 python3 scripts/deploy.py            # --tile-size compact | --cards-only | --status
-python3 scripts/deploy.py --remove-local   # after switching to the HACS install
+python3 scripts/deploy.py --remove-local   # after switching to the Marketplace / HACS install
 ```
 
-**Release:** bump the version (`npm version patch --no-git-tag-version`), commit, then `./scripts/release.sh` — it tests, builds, tags, pushes, and creates the GitHub release with `controlz-ha.js` attached for HACS.
+**Release:** bump the version (`npm version patch --no-git-tag-version`), commit, then `./scripts/release.sh` — it tests, builds, tags, pushes, and creates the GitHub release with `controlz-ha.js` attached. The Marketplace and HACS install that release asset (they look for `controlz-ha.js`, named in `hacs.json`).
 
 ## License
 

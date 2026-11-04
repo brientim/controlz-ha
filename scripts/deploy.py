@@ -21,8 +21,9 @@ Usage:
   python3 scripts/deploy.py --status
   python3 scripts/deploy.py --remove-local      # after installing through HACS: drop the /local copy
 
-When ControlZ HA is installed through HACS (/hacsfiles/controlz-ha/), the /local resource is not
-registered, so only one copy of the cards loads; the dashboard is still created/updated.
+When ControlZ HA is installed through HACS (/hacsfiles/controlz-ha/) or the Home Assistant 2026.11+
+Marketplace (/local/community/controlz-ha/), the /local resource is not registered, so only one
+copy of the cards loads; the dashboard is still created/updated.
 """
 
 from __future__ import annotations
@@ -49,7 +50,8 @@ DIST = REPO / "dist" / "controlz-ha.js"
 BACKUPS = REPO / "backups"
 REMOTE_NAME = "controlz-ha.js"
 RESOURCE_PATH = f"/local/{REMOTE_NAME}"
-HACS_RESOURCE_PREFIX = "/hacsfiles/controlz-ha/"
+# HACS (Home Assistant ≤ 2026.10) and the built-in Marketplace (2026.11+, which replaced HACS).
+STORE_RESOURCE_PREFIXES = ("/hacsfiles/controlz-ha/", "/local/community/controlz-ha/")
 DASHBOARD_PATH = "dashboard-controlz"
 STRATEGY_TYPE = "custom:controlz-rooms"
 
@@ -116,7 +118,8 @@ def upload() -> None:
 
 
 def hacs_resource(resources: list[dict]) -> dict | None:
-    return next((r for r in resources if (r.get("url") or "").startswith(HACS_RESOURCE_PREFIX)), None)
+    """Resource added by HACS or the Marketplace, if ControlZ HA was installed from the store."""
+    return next((r for r in resources if (r.get("url") or "").startswith(STORE_RESOURCE_PREFIXES)), None)
 
 
 def local_resource(resources: list[dict]) -> dict | None:
@@ -129,7 +132,7 @@ def ensure_resource(ws: HAWebSocket, version: str) -> bool:
     resources = ws.ok("lovelace/resources") or []
     hacs = hacs_resource(resources)
     if hacs:
-        print(f"resource: HACS provides the cards ({hacs['url']}); /local copy not registered.")
+        print(f"resource: HACS / Marketplace provides the cards ({hacs['url']}); /local copy not registered.")
         if local_resource(resources):
             print("  warning: a /local copy is also registered — run with --remove-local.")
         return False
@@ -215,10 +218,10 @@ def status(ws: HAWebSocket) -> int:
         code = f"error: {exc}"
     print(f"GET {RESOURCE_PATH} → {code}")
     resources = ws.ok("lovelace/resources") or []
-    ours = [r.get("url") for r in resources if RESOURCE_PATH in (r.get("url") or "") or (r.get("url") or "").startswith(HACS_RESOURCE_PREFIX)]
+    ours = [r.get("url") for r in resources if RESOURCE_PATH in (r.get("url") or "") or (r.get("url") or "").startswith(STORE_RESOURCE_PREFIXES)]
     print(f"resource: {ours or 'not registered'}")
     if hacs_resource(resources) and local_resource(resources):
-        print("  warning: both HACS and /local copies are registered — run with --remove-local.")
+        print("  warning: both HACS / Marketplace and /local copies are registered — run with --remove-local.")
     if DIST.is_file():
         print(f"local bundle hash: {bundle_hash()}")
     dashboards = ws.ok("lovelace/dashboards/list") or []
@@ -239,7 +242,7 @@ def main() -> int:
     parser.add_argument("--cards-only", action="store_true", help="upload + resource only; do not touch dashboards")
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--force", action="store_true", help="replace a hand-edited ControlZ dashboard (backed up first)")
-    parser.add_argument("--remove-local", action="store_true", help="remove the /local copy (use after installing through HACS)")
+    parser.add_argument("--remove-local", action="store_true", help="remove the /local copy (use after installing through HACS / Marketplace)")
     args = parser.parse_args()
 
     if not HA_TOKEN:
