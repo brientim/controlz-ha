@@ -252,6 +252,10 @@ def marketplace_install(ws: HAWebSocket, timeout_s: int = 180) -> bool:
     if not repo:
         print("marketplace: repository did not appear after adding it")
         return False
+    # Custom repositories are only re-checked about every 48 h; ask for the latest release now.
+    refreshed = ws.call("marketplace/repository/refresh", repository=repo["id"])
+    if refreshed.get("success"):
+        repo = find_repository(ws) or repo
     print(f"marketplace: {repo['full_name']} installed {repo.get('installed_version') or '-'} "
           f"available {repo.get('available_version')}")
     if repo.get("installed") and repo.get("installed_version") == repo.get("available_version"):

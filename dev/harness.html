@@ -151,6 +151,10 @@
           }
         }
         async function measure(where) {
+          // Home Assistant's hui-card hides any card whose `hidden` property is truthy.
+          for (const card of document.getElementById("view").children) {
+            if (card.hidden) problems.push(`${size} ${where} ${card.localName}: card.hidden is truthy, Home Assistant would hide it`);
+          }
           for (const { host, tile } of deepTiles(document.getElementById("view"))) {
             checked += 1;
             const id = `${size} ${where} ${host.localName.replace("controlz-", "")} ${host._config.entity || host._config.area}`;

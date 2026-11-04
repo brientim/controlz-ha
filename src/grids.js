@@ -124,11 +124,12 @@ class CzPage extends HTMLElement {
     return { columns: "full", rows: "auto" };
   }
 
-  get editing() {
+  // Not `hidden` / `editing`: Home Assistant's card wrapper reads `element.hidden` to hide cards.
+  get _editMode() {
     return isEditing() && !!this._config?.editable;
   }
 
-  get hidden() {
+  get _hiddenSets() {
     return hiddenLists(this._config);
   }
 
@@ -136,15 +137,15 @@ class CzPage extends HTMLElement {
     if (!this._hass || !this._config) return;
     this._size = effectiveSize(this._config.tile_size);
     this.setAttribute("size", this._size);
-    const { areas, entities } = this.hidden;
-    const key = `${this._size}|${this.editing}|${[...areas]}|${[...entities]}|${this.structureKey()}`;
+    const { areas, entities } = this._hiddenSets;
+    const key = `${this._size}|${this._editMode}|${[...areas]}|${[...entities]}|${this.structureKey()}`;
     if (key !== this._key) {
       this._key = key;
       this._children = [];
       this.shadowRoot.innerHTML = `<style>${GRID_STYLES}${this.styles()}</style><div class="page"></div>`;
       const page = this.shadowRoot.querySelector(".page");
       this.build(page);
-      if (this.editing) this._editBanner(page);
+      if (this._editMode) this._editBanner(page);
     }
     this._applyScale();
     this.update();
@@ -227,8 +228,8 @@ export class RoomGrid extends CzPage {
 
   build(page) {
     const { area, show_title, show_room_tile } = this._config;
-    const hiddenEntities = this.hidden.entities;
-    const editing = this.editing;
+    const hiddenEntities = this._hiddenSets.entities;
+    const editing = this._editMode;
     const all = areaItems(this._hass, area);
     const items = editing ? all : all.filter((i) => !hiddenEntities.has(i.entity_id));
     const name = this._config.title || this._hass.areas?.[area]?.name || area;
@@ -310,8 +311,8 @@ export class HomeGrid extends CzPage {
 
   /** Areas with lights or coverings; hidden ones only while editing. */
   _areas() {
-    const hiddenAreas = this.hidden.areas;
-    const editing = this.editing;
+    const hiddenAreas = this._hiddenSets.areas;
+    const editing = this._editMode;
     return sortedAreas(this._hass, { order: this._config.areas_order })
       .filter((a) => editing || !hiddenAreas.has(a.area_id))
       .filter((a) => areaItems(this._hass, a.area_id).some((i) => i.kind === "light" || i.kind === "cover"));
@@ -339,7 +340,7 @@ export class HomeGrid extends CzPage {
       page.insertAdjacentHTML("beforeend", `<div class="empty">No areas with lights or window coverings yet. Assign devices to areas in Home Assistant.</div>`);
       return;
     }
-    const hiddenAreas = this.hidden.areas;
+    const hiddenAreas = this._hiddenSets.areas;
     const base = location.pathname.split("/").slice(0, 2).join("/");
     const grid = document.createElement("div");
     grid.className = "grid";
@@ -348,7 +349,7 @@ export class HomeGrid extends CzPage {
       if (this._config.select_rooms) config.select_area = true;
       else if (this._config.navigation) config.navigation_path = `${base}/${this._config.view_path_prefix}${a.area_id}`;
       const tile = this.tile("room", config);
-      grid.append(this.editing ? hideWrap(tile, "area", a.area_id, a.name, hiddenAreas.has(a.area_id)) : tile);
+      grid.append(this._editMode ? hideWrap(tile, "area", a.area_id, a.name, hiddenAreas.has(a.area_id)) : tile);
     }
     page.append(grid);
   }
