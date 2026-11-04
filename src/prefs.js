@@ -5,6 +5,8 @@
  */
 export const SIZES = ["large", "thin", "compact"];
 export const NAVS = ["tabs", "sidebar"];
+/** View menu presets; `tile_scale` in YAML accepts any value from 0.4 to 1.5. */
+export const SCALES = [1, 0.8, 0.6];
 export const PREFS_EVENT = "controlz-ha-prefs";
 
 const KEY = "controlz-ha.prefs";
@@ -34,6 +36,18 @@ export function effectiveSize(configSize) {
   const pref = readPrefs().tile_size;
   if (SIZES.includes(pref)) return pref;
   return SIZES.includes(configSize) ? configSize : "large";
+}
+
+/**
+ * Page zoom for tiles (1 = ControlZ size). Everything inside a page scales together, so tiles
+ * keep their look and controls keep fitting; more tiles fit on screen at smaller scales.
+ */
+export function effectiveScale(configScale) {
+  const valid = (v) => typeof v === "number" && v >= 0.4 && v <= 1.5;
+  const pref = readPrefs().tile_scale;
+  if (valid(pref)) return pref;
+  const config = Number(configScale);
+  return valid(config) ? config : 1;
 }
 
 export function effectiveNav(configNav) {

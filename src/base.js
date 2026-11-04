@@ -58,6 +58,8 @@ export class CzElement extends HTMLElement {
 
   _applySize() {
     this.setAttribute("size", effectiveSize(this._config.tile_size));
+    const scale = Number(this._config.tile_scale);
+    this.style.zoom = scale >= 0.4 && scale <= 1.5 && scale !== 1 ? String(scale) : "";
   }
 
   setConfig(config) {

@@ -216,6 +216,7 @@ export class RoomsApp extends HTMLElement {
       this._pageKey = key;
       const shared = {
         tile_size: this._config.tile_size,
+        tile_scale: this._config.tile_scale,
         show_menu: false,
         ...iconOptions(this._config),
       };

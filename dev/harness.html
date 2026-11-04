@@ -97,7 +97,7 @@
     }
 
     async function regenerate() {
-      dashboard = await Strategy.generate({ type: "custom:controlz-rooms", tile_size: sizeSelect.value, icons_view: true, room_nav: params.get("nav") || "tabs" }, mock.hass);
+      dashboard = await Strategy.generate({ type: "custom:controlz-rooms", tile_size: sizeSelect.value, icons_view: true, room_nav: params.get("nav") || "tabs", tile_scale: Number(params.get("scale") || 1) }, mock.hass);
       renderView();
     }
 
@@ -117,6 +117,7 @@
 
     /** Every tile in every view at every size: exact contract height, nothing clipped or overflowing. */
     const CONTRACT = { large: 200, thin: 100, compact: 150 };
+    const SCALE = Number(params.get("scale") || 1);
     const deepTiles = (root, out = []) => {
       for (const el of root.querySelectorAll("*")) {
         if (el.shadowRoot) {
@@ -132,7 +133,7 @@
       let checked = 0;
       for (const size of Object.keys(CONTRACT)) {
         sizeSelect.value = size;
-        dashboard = await Strategy.generate({ type: "custom:controlz-rooms", tile_size: size, room_nav: params.get("nav") || "tabs" }, mock.hass);
+        dashboard = await Strategy.generate({ type: "custom:controlz-rooms", tile_size: size, room_nav: params.get("nav") || "tabs", tile_scale: SCALE }, mock.hass);
         for (const view of dashboard.views) {
           renderView(null, view.path);
           await new Promise((r) => setTimeout(r, 30));
@@ -148,14 +149,17 @@
           for (const { host, tile } of deepTiles(document.getElementById("view"))) {
             checked += 1;
             const id = `${size} ${where} ${host.localName.replace("controlz-", "")} ${host._config.entity || host._config.area}`;
-            const h = Math.round(tile.getBoundingClientRect().height);
-            if (h !== CONTRACT[size]) problems.push(`${id}: height ${h} != ${CONTRACT[size]}`);
+            const h = tile.getBoundingClientRect().height;
+            const want = CONTRACT[size] * SCALE;
+            if (Math.abs(h - want) > 1) problems.push(`${id}: height ${Math.round(h)} != ${want}`);
+            const right = tile.getBoundingClientRect().right;
+            if (right > document.documentElement.clientWidth + 1) problems.push(`${id}: off-screen right (${Math.round(right)} > ${document.documentElement.clientWidth})`);
             if (tile.scrollHeight > tile.clientHeight + 1) problems.push(`${id}: clipped vertically (${tile.scrollHeight} > ${tile.clientHeight})`);
             for (const row of tile.querySelectorAll(".row, .footer, .header")) {
               if (row.scrollWidth > row.clientWidth + 1) problems.push(`${id}: ${row.className} overflows (${row.scrollWidth} > ${row.clientWidth})`);
             }
             const name = tile.querySelector(".name");
-            if (name && name.getBoundingClientRect().width < 48) problems.push(`${id}: name squeezed to ${Math.round(name.getBoundingClientRect().width)}px`);
+            if (name && name.getBoundingClientRect().width < 48 * SCALE) problems.push(`${id}: name squeezed to ${Math.round(name.getBoundingClientRect().width)}px`);
           }
         }
       }

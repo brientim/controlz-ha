@@ -193,6 +193,15 @@ test("scene chip labels drop the room name Hue adds", () => {
   assert.equal(sceneLabel("Evening Wind Down", "Living Room"), "Evening Wind Down");
 });
 
+test("tile scale: config value within 0.4–1.5, otherwise 100%", async () => {
+  const { effectiveScale } = await import("../src/prefs.js");
+  assert.equal(effectiveScale(0.6), 0.6);
+  assert.equal(effectiveScale("0.8"), 0.8);
+  assert.equal(effectiveScale(undefined), 1);
+  assert.equal(effectiveScale(0.1), 1);
+  assert.equal(effectiveScale(3), 1);
+});
+
 test("formatting helpers", () => {
   assert.equal(formatSensorValue(hass.states["sensor.office_motion_temperature"]), "22.4°C");
   assert.equal(formatSensorValue(hass.states["sensor.kitchen_humidity"]), "54%");

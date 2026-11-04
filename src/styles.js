@@ -284,7 +284,14 @@ export const SHEET_STYLES = `
 
 export const GRID_STYLES = `
   ${TOKENS}
-  .page { padding: 16px; max-width: 1600px; margin: 0 auto; }
+  .page { padding: 16px; max-width: 1600px; margin: 0 auto; --cz-scale: 1; }
+  /* Tile scale: everything below the header zooms together (same look, controls still fit).
+     --cz-inner is the measured content width in px, widened by 1 / scale so the zoomed
+     content still spans the page (percentages are not used: browsers resolve them differently under zoom). */
+  .page.scaled > :not(.page-head):not(.sheet-host) {
+    zoom: var(--cz-scale);
+    width: calc(var(--cz-inner) / var(--cz-scale));
+  }
   .page-title { margin: 0 0 12px; font-size: 1.35rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
   .title-icon { display: inline-flex; width: 28px; height: 28px; color: var(--cz-text-secondary); }
   .title-icon svg { width: 28px; height: 28px; }

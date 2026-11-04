@@ -10,6 +10,7 @@ import { resolveAreaIcon } from "./room-icons.js";
  *     type: custom:controlz-rooms
  *     room_nav: tabs            # tabs = All Rooms + one view (tab) per area; sidebar = ControlZ room sidebar
  *     tile_size: large          # large | thin | compact (default; each device can override from the View menu)
+ *     tile_scale: 1             # 0.4–1.5; 0.6 shrinks every page ~40% so more tiles fit (View menu: 100/80/60%)
  *     areas_order: [office]     # optional, pinned first
  *     hide_areas: [garage]      # optional
  *     security_include: []      # optional: only these entities can raise the security banner
@@ -31,6 +32,7 @@ export class ControlZRoomsStrategy extends HTMLElement {
     const areaOptions = { order: config.areas_order || [], hide: config.hide_areas || [] };
     const shared = {
       tile_size: tileSize,
+      ...(config.tile_scale != null ? { tile_scale: config.tile_scale } : {}),
       room_nav: config.room_nav || "tabs",
       show_nav_menu: true,
       ...(config.room_icons ? { room_icons: config.room_icons } : {}),

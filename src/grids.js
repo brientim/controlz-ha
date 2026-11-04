@@ -1,7 +1,7 @@
 import { areaItems, itemsKey } from "./area-cache.js";
 import { escapeHtml, fireEvent } from "./base.js";
 import { groupBySection, securityReport, sortedAreas } from "./model.js";
-import { PREFS_EVENT, effectiveSize } from "./prefs.js";
+import { PREFS_EVENT, effectiveScale, effectiveSize } from "./prefs.js";
 import { resolveAreaIcon, roomIconSvg } from "./room-icons.js";
 import { GRID_STYLES, SHEET_STYLES } from "./styles.js";
 import { createTile } from "./tile-factory.js";
@@ -16,7 +16,8 @@ export const viewMenuHtml = (config) =>
   config.show_menu === false
     ? ""
     : `<controlz-view-menu default-size="${escapeHtml(config.tile_size || "large")}"
-        default-nav="${escapeHtml(config.room_nav || "tabs")}" ${config.show_nav_menu ? "show-nav" : ""}></controlz-view-menu>`;
+        default-nav="${escapeHtml(config.room_nav || "tabs")}" default-scale="${escapeHtml(String(config.tile_scale ?? 1))}"
+        ${config.show_nav_menu ? "show-nav" : ""}></controlz-view-menu>`;
 
 /**
  * Shared shell for page-level cards: rebuilds child tiles only when the set of entities or the
@@ -33,14 +34,30 @@ class CzPage extends HTMLElement {
       this._key = null;
       this._sync();
     };
+    this._resize = new ResizeObserver(() => this._applyScale());
   }
 
   connectedCallback() {
     window.addEventListener(PREFS_EVENT, this._onPrefs);
+    this._resize.observe(this);
   }
 
   disconnectedCallback() {
     window.removeEventListener(PREFS_EVENT, this._onPrefs);
+    this._resize.disconnect();
+  }
+
+  /** Zoom the content below the header by the tile scale, keeping it full width. */
+  _applyScale() {
+    const page = this.shadowRoot.querySelector(".page");
+    if (!page || !this._config) return;
+    const scale = effectiveScale(this._config.tile_scale);
+    page.classList.toggle("scaled", scale !== 1);
+    if (scale === 1) return;
+    const style = getComputedStyle(page);
+    const inner = page.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    page.style.setProperty("--cz-scale", String(scale));
+    page.style.setProperty("--cz-inner", `${Math.max(0, Math.floor(inner))}px`);
   }
 
   setConfig(config) {
@@ -81,6 +98,7 @@ class CzPage extends HTMLElement {
       this.shadowRoot.innerHTML = `<style>${GRID_STYLES}${SHEET_STYLES}${this.styles()}</style><div class="page"></div>`;
       this.build(this.shadowRoot.querySelector(".page"));
     }
+    this._applyScale();
     this.update();
     for (const child of this._children) child.hass = this._hass;
   }

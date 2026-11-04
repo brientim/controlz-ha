@@ -1,7 +1,7 @@
-import { NAVS, PREFS_EVENT, SIZES, effectiveNav, effectiveSize, readPrefs, writePrefs } from "./prefs.js";
+import { NAVS, PREFS_EVENT, SCALES, SIZES, effectiveNav, effectiveScale, effectiveSize, readPrefs, writePrefs } from "./prefs.js";
 import { TOKENS } from "./styles.js";
 
-const LABELS = { large: "Large", thin: "Thin", compact: "Compact", tabs: "Tabs", sidebar: "Sidebar" };
+const LABELS = { large: "Large", thin: "Thin", compact: "Compact", tabs: "Tabs", sidebar: "Sidebar", 1: "100%", 0.8: "80%", 0.6: "60%" };
 
 const STYLES = `
   ${TOKENS}
@@ -63,13 +63,15 @@ export class ViewMenu extends HTMLElement {
   }
 
   _segment(name, values, current) {
-    return `<div class="seg" role="group" aria-label="${name === "size" ? "Tile size" : "Rooms"}">${values.map((v) =>
+    const label = { size: "Tile size", nav: "Rooms", scale: "Scale" }[name];
+    return `<div class="seg" role="group" aria-label="${label}">${values.map((v) =>
       `<button type="button" data-${name}="${v}" aria-pressed="${v === current}">${LABELS[v]}</button>`).join("")}</div>`;
   }
 
   _render() {
     const size = effectiveSize(this.getAttribute("default-size"));
     const nav = effectiveNav(this.getAttribute("default-nav"));
+    const scale = effectiveScale(this.getAttribute("default-scale"));
     const custom = Object.keys(readPrefs()).length > 0;
     this.shadowRoot.innerHTML = `<style>${STYLES}</style>
       <button type="button" class="trigger" aria-haspopup="true" aria-expanded="${this._open}" data-toggle>
@@ -78,6 +80,8 @@ export class ViewMenu extends HTMLElement {
       ${this._open ? `<div class="menu" role="menu">
         <div class="label">Tile size</div>
         ${this._segment("size", SIZES, size)}
+        <div class="label">Scale</div>
+        ${this._segment("scale", SCALES, scale)}
         ${this.hasAttribute("show-nav") ? `<div class="label">Rooms</div>${this._segment("nav", NAVS, nav)}` : ""}
         <p class="note">Saved on this device only.</p>
         ${custom ? `<button type="button" class="reset" data-reset>Use dashboard defaults</button>` : ""}
@@ -94,8 +98,9 @@ export class ViewMenu extends HTMLElement {
     }
     const navBefore = effectiveNav(this.getAttribute("default-nav"));
     if (target.dataset.size) writePrefs({ tile_size: target.dataset.size });
+    if (target.dataset.scale) writePrefs({ tile_scale: Number(target.dataset.scale) });
     if (target.dataset.nav) writePrefs({ room_nav: target.dataset.nav });
-    if (target.hasAttribute("data-reset")) writePrefs({ tile_size: null, room_nav: null });
+    if (target.hasAttribute("data-reset")) writePrefs({ tile_size: null, room_nav: null, tile_scale: null });
     if (effectiveNav(this.getAttribute("default-nav")) !== navBefore) {
       location.reload();
     }
