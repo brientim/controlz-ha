@@ -1,5 +1,6 @@
 import { areaItems, itemsKey, visibleItems } from "./area-cache.js";
 import { openAutomationEditor } from "./automation-editor.js";
+import { openImportSheet } from "./transfer.js";
 import { dashboardBase, escapeHtml, fireEvent, navigate } from "./base.js";
 import {
   FAVORITES_EVENT, favoriteLists, favoriteOrder, isFavorite, loadFavorites, setFavoritesOrder, toggleFavorite,
@@ -292,7 +293,7 @@ class CzPage extends HTMLElement {
 
   _onPageClick(ev) {
     const target = ev.composedPath().find((el) => el instanceof HTMLElement && el.matches?.(
-      "[data-hide-kind], [data-fav-kind], [data-move-id], [data-edit-done], [data-new-automation]"));
+      "[data-hide-kind], [data-fav-kind], [data-move-id], [data-edit-done], [data-new-automation], [data-import]"));
     if (!target) return;
     ev.stopPropagation();
     if (target.hasAttribute("data-edit-done")) {
@@ -302,6 +303,10 @@ class CzPage extends HTMLElement {
     }
     if (target.hasAttribute("data-new-automation")) {
       openAutomationEditor(this, { areaId: target.dataset.newAutomation });
+      return;
+    }
+    if (target.hasAttribute("data-import")) {
+      openImportSheet(this, { areaId: target.dataset.import });
       return;
     }
     this._runEdit(target, async () => {
@@ -347,16 +352,20 @@ class CzPage extends HTMLElement {
 
   /**
    * Device sections (ControlZ room order). Scenes are a chip row unless `scenes_style: tiles` or
-   * editing; `newAutomationArea` (admins) adds "+ New" to the Automations heading; `canMove` adds
-   * the reorder arrows in edit mode (each section reorders on its own).
+   * editing; `newAutomationArea` (admins) adds "+ New" to the Automations heading and Import to
+   * the Scenes heading; `canMove` adds the reorder arrows in edit mode (each section reorders on its own).
    */
   sections(page, items, { areaName = "", newAutomationArea, canMove = false } = {}) {
     const editing = this._editMode;
     const hiddenEntities = this._hiddenSets.entities;
+    const roomAdmin = newAutomationArea !== undefined && this._isAdmin;
     for (const section of groupBySection(items)) {
       const el = document.createElement("section");
+      const importButton = section.id === "scenes" && roomAdmin
+        ? `<button type="button" class="head-btn" data-import="${escapeHtml(newAutomationArea)}">Import</button>`
+        : "";
       if (section.id === "scenes" && this._config.scenes_style !== "tiles" && !editing) {
-        el.innerHTML = `<h2>${section.title}</h2>`;
+        el.innerHTML = `<div class="section-head"><h2>${section.title}</h2>${importButton}</div>`;
         const strip = document.createElement("controlz-scene-strip");
         strip.setConfig({ tile_size: this._size, area_name: areaName, entities: section.items.map((i) => i.entity_id) });
         this._children.push(strip);
@@ -364,9 +373,9 @@ class CzPage extends HTMLElement {
         page.append(el);
         continue;
       }
-      const addButton = section.id === "automations" && newAutomationArea !== undefined && this._isAdmin
+      const addButton = section.id === "automations" && roomAdmin
         ? `<button type="button" class="head-btn" data-new-automation="${escapeHtml(newAutomationArea)}">+ New</button>`
-        : "";
+        : importButton;
       el.innerHTML = `<div class="section-head"><h2>${section.title}</h2>${addButton}</div><div class="grid"></div>`;
       const grid = el.querySelector(".grid");
       for (const item of section.items) {
@@ -811,7 +820,9 @@ export class AutomationsGrid extends CzPage {
 
   build(page) {
     const title = this._config.title || "Automations";
-    const add = this._isAdmin ? `<button type="button" class="head-btn" data-new-automation="">+ New automation</button>` : "";
+    const add = this._isAdmin
+      ? `<button type="button" class="head-btn" data-new-automation="">+ New automation</button><button type="button" class="head-btn" data-import="">Import</button>`
+      : "";
     this.header(page, `<div class="section-head" style="margin:0"><h1 class="page-title"><span class="title-icon">${ICONS.gear}</span>${escapeHtml(title)}</h1>${add}</div>`,
       { id: "automations", name: title });
     const groups = this._groups();

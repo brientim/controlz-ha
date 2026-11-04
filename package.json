@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@mdi/js": "^7.4.47",
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "js-yaml": "^4.3.2"
   }
 }

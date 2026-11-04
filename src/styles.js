@@ -374,6 +374,17 @@ export const SHEET_STYLES = `
   .field > span { font-size: 0.75rem; font-weight: 600; color: var(--cz-text-secondary); }
   .field-row { display: flex; gap: 8px; }
   .field-row > .field { flex: 1; min-width: 0; }
+  .code-view {
+    width: 100%; box-sizing: border-box; min-height: 160px; resize: vertical; padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--cz-border); background: var(--cz-bg-secondary); color: var(--cz-text);
+    font: 0.78rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; overflow: auto; tab-size: 2;
+  }
+  .file-btn { position: relative; overflow: hidden; text-align: center; cursor: pointer; }
+  .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .ed-step { display: flex; flex-direction: column; gap: 8px; }
+  .ed-step.boxed { padding: 10px; border: 1px solid var(--cz-border); border-radius: 10px; }
+  .ed-step-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.8rem; font-weight: 700; color: var(--cz-text-secondary); }
+  .ed-step-head .btn { flex: 0 0 auto; padding: 4px 10px; font-size: 0.78rem; }
 
   .sec-row .level { margin-left: auto; font-weight: 700; font-size: 0.85rem; }
   .sec-row .level.low { color: #b91c1c; }

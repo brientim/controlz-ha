@@ -5,6 +5,7 @@ import { automationConfigId, describeAutomation, simpleDraft } from "../automati
 import { CzElement, escapeHtml, navigate } from "../base.js";
 import { friendlyName, isUnavailable, relativeTime } from "../model.js";
 import { sheetFrame } from "../sheet.js";
+import { openExportSheet } from "../transfer.js";
 import { SCENE_STYLES, TILE_STYLES } from "../styles.js";
 
 /**
@@ -138,7 +139,9 @@ export class AutomationTile extends CzElement {
   sheetBody() {
     const m = this._facts();
     const d = this._details || {};
-    const nameOf = (id) => (typeof id === "string" && this._hass.states[id] ? friendlyName(this._hass, id) : String(id));
+    const nameOf = (id) => (typeof id !== "string" ? String(id)
+      : this._hass.states[id] ? friendlyName(this._hass, id)
+        : this._hass.areas?.[id]?.name || id);
     const lines = (label, items) => (items.length
       ? `<div class="lines-label">${label}</div><ul class="lines">${items.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>`
       : "");
@@ -156,6 +159,7 @@ export class AutomationTile extends CzElement {
           <button type="button" class="btn secondary" data-action="ha-edit">Open in Home Assistant</button>
           <button type="button" class="btn secondary" data-action="traces">Traces</button>
           <button type="button" class="btn secondary" data-action="duplicate" ${d.busy ? "disabled" : ""}>${d.busy || "Duplicate"}</button>
+          <button type="button" class="btn secondary" data-action="export" ${d.config ? "" : "disabled"}>Export</button>
           <button type="button" class="btn danger" data-action="delete">Delete</button>
         </div></div>`
       : "";
@@ -186,6 +190,9 @@ export class AutomationTile extends CzElement {
       edit: () => this._edit(),
       delete: () => this._delete(),
       duplicate: () => this._duplicate(),
+      export: () => {
+        if (this._details?.config) openExportSheet(this, { kind: "automation", name: this._facts().name, config: this._details.config });
+      },
       "ha-edit": () => {
         this.closeSheet();
         navigate(automationEditorPath(this._facts().configId));

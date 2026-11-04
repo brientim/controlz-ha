@@ -80,7 +80,9 @@ Automations have their own **Automations** view (grouped by room, then "No room"
 - **What this will do** — the automation's triggers, conditions and actions in plain words ("When Front Door changes to on", "Turn on Hall Light").
 - For Home Assistant admins: **Edit**, **Delete**, and in the details sheet **Duplicate**, **Traces** and **Open in Home Assistant**.
 
-**+ New automation** (Automations view, or **+ New** on a room's Automations heading) opens a simple editor like ControlZ's: a name, a room, one trigger (a time, a device changing, or sunrise / sunset with an offset) and one action (activate a scene, run a script, or control a device). It saves through Home Assistant's own automation config API, so the result is an ordinary Home Assistant automation. **Edit** uses the same editor when an automation is that simple; anything with conditions, several steps or templates opens Home Assistant's automation editor instead, so nothing is ever rewritten in a simpler form. Turn the view off with `automations_view: false`; room pages still list their automations.
+**+ New automation** (Automations view, or **+ New** on a room's Automations heading) opens a simple editor like ControlZ's: a name, a room, one trigger (a time, a device changing, or sunrise / sunset with an offset) and one or more actions, run in order (activate a scene, run a script, control a device, or control a room — e.g. turn off all the lights in the Kitchen). Device pickers are grouped by room in your dashboard's room order. It saves through Home Assistant's own automation config API, so the result is an ordinary Home Assistant automation. **Edit** uses the same editor when an automation is that simple; anything with conditions, waits, extra data or templates opens Home Assistant's automation editor instead, so nothing is ever rewritten in a simpler form. Turn the view off with `automations_view: false`; room pages still list their automations.
+
+**Export and import** (admins): **Export** in an automation's or a scene's details sheet shows its config as YAML or JSON, with Copy, Download and (on phones and the companion app) Share. It is the config exactly as Home Assistant stores it, so it also pastes into Home Assistant's "Edit in YAML". **Import** (Automations view, or a room's Scenes heading) takes pasted YAML / JSON or a `.yaml` / `.json` file with one scene or automation or a list of them, shows what it found (and any scene devices this Home Assistant does not have), and adds each one **as new** in the chosen room — nothing existing is replaced.
 
 ![Automation details](https://raw.githubusercontent.com/brientim/controlz-ha/main/dev/screenshots/automation-sheet.png) With tabs, the page reloads after Done so hidden rooms leave the tab bar.
 
@@ -135,7 +137,7 @@ Download `controlz-ha.js` from the [latest release](https://github.com/brientim/
 
 ![Thermostat](https://raw.githubusercontent.com/brientim/controlz-ha/main/dev/screenshots/thermostat-sheet.png)
 
-**Scenes** show as a row of chips on each room page; tap to run, right-click for details. The room name Hue adds is dropped, so "Kitchen Bright Kitchen" reads "Bright". Set `scenes_style: tiles` for full scene tiles.
+**Scenes** show as a row of chips on each room page; tap to run, right-click for the scene sheet (what it sets; Export for admins). Tapping a scene tile opens the same sheet. The room name Hue adds is dropped, so "Kitchen Bright Kitchen" reads "Bright". Set `scenes_style: tiles` for full scene tiles.
 
 ![Room page](https://raw.githubusercontent.com/brientim/controlz-ha/main/dev/screenshots/sliders-office.png)
 
@@ -211,7 +213,7 @@ tile_size: thin
 ## Limitations
 
 - New areas or devices moved between areas appear after a dashboard reload. With tabs, a reordered room list also follows after a reload (the page reloads itself after **Done**).
-- Editing, duplicating and deleting automations needs a Home Assistant admin (Home Assistant's automation config API is admin-only). YAML automations without an `id` can be run and enabled, but not read or edited here.
+- Editing, duplicating and deleting automations needs a Home Assistant admin (Home Assistant's automation config API is admin-only). YAML automations without an `id` can be run and enabled, but not read or edited here. The same goes for exporting and importing scenes and automations, and for YAML scenes without an `id`. Import does not handle scripts or Home Assistant YAML tags such as `!secret`.
 - Favorites changed on one device show on another after it reloads.
 - Tested on Home Assistant 2026.10.
 
@@ -224,7 +226,7 @@ npm run build       # dist/controlz-ha.js
 npm run serve       # then open http://127.0.0.1:8765/dev/harness.html (add ?fresh=1 to clear saved hides)
 ```
 
-`dev/harness.html` renders the dashboard against a mock `hass` (`dev/fixture.js`); service calls change the fixture state and show in a log overlay. The mock also fakes the automation config API, frontend user data (favorites) and entity registry updates for the browser session (`?fresh=1` resets them). Query parameters: `?view=room-office&size=thin&dark=1&nav=sidebar&admin=0&open=menu|security|edit|maintenance|light-sheet|room-sheet|climate-sheet|fan-sheet|alarm-sheet|automation-sheet|editor-sheet`. `?fit=1` measures every tile at every size and reports any that are off-contract, clipped, overflowing or off-screen; add `&scale=0.6` and `&nav=sidebar` to check those too.
+`dev/harness.html` renders the dashboard against a mock `hass` (`dev/fixture.js`); service calls change the fixture state and show in a log overlay. The mock also fakes the automation and scene config APIs, frontend user data (favorites) and entity registry updates for the browser session (`?fresh=1` resets them). Query parameters: `?view=room-office&size=thin&dark=1&nav=sidebar&admin=0&open=menu|security|edit|maintenance|light-sheet|room-sheet|climate-sheet|fan-sheet|alarm-sheet|automation-sheet|editor-sheet`. `?fit=1` measures every tile at every size and reports any that are off-contract, clipped, overflowing or off-screen; add `&scale=0.6` and `&nav=sidebar` to check those too.
 
 **Deploy a dev build without HACS** (copies to `config/www` over SSH and creates the dashboard):
 

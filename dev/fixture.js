@@ -66,9 +66,9 @@ export function makeFixture() {
     "binary_sensor.office_window": {
       state: "on", last_changed: ago(3), attributes: { friendly_name: "Office Window", device_class: "window" },
     },
-    "scene.office_focus": { state: "2026-11-04T01:00:00+00:00", attributes: { friendly_name: "Office Focus" } },
+    "scene.office_focus": { state: "2026-11-04T01:00:00+00:00", attributes: { friendly_name: "Office Focus", id: "1700000000101" } },
     "scene.office_bright": { state: "unknown", attributes: { friendly_name: "Office Bright Office" } },
-    "scene.office_relax": { state: "unknown", attributes: { friendly_name: "Office Relax" } },
+    "scene.office_relax": { state: "unknown", attributes: { friendly_name: "Office Relax", id: "1700000000102" } },
     "scene.office_natural_light": { state: "unknown", attributes: { friendly_name: "Office Natural light Office" } },
     "scene.office_nightlight": { state: "unknown", attributes: { friendly_name: "Office Nightlight Office" } },
     "automation.office_lights_at_sunset": {

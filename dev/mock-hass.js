@@ -1,7 +1,7 @@
 /**
  * Minimal stand-in for the Home Assistant frontend `hass` object: applies common
  * service calls to the fixture states and pushes a fresh `hass` to listeners. Also fakes the
- * automation config API, frontend user data (favorites) and entity registry area updates.
+ * automation and scene config APIs, frontend user data (favorites) and entity registry area updates.
  */
 import { makeFixture } from "./fixture.js";
 
@@ -29,6 +29,36 @@ const SEED_AUTOMATIONS = {
     triggers: [{ trigger: "state", entity_id: "binary_sensor.smoke_kitchen", to: "on" }],
     conditions: [{ condition: "time", after: "06:00:00", before: "23:00:00" }],
     actions: [{ action: "notify.notify", data: { message: "Check the kitchen" } }, { delay: "00:01:00" }, { action: "light.turn_on", target: { entity_id: "light.kitchen_bench_light" } }],
+  },
+};
+
+const SCENES_KEY = "controlz-harness-scenes";
+const SEED_SCENES = {
+  1700000000101: {
+    id: "1700000000101", name: "Office Focus",
+    entities: {
+      "light.office_desk_lamp": { state: "on", brightness: 255, color_mode: "color_temp", color_temp_kelvin: 5000 },
+      "light.office_colour_light": { state: "off" },
+      "cover.office_roller_blind": { state: "open", current_position: 60 },
+    },
+    metadata: {},
+  },
+  1700000000102: {
+    id: "1700000000102", name: "Office Relax",
+    entities: { "light.office_desk_lamp": { state: "on", brightness: 102 }, "light.office_colour_light": { state: "on", brightness: 64, rgb_color: [255, 140, 60] } },
+    metadata: {},
+  },
+};
+
+/** Config stores the mock config API serves: `config/<domain>/config/<id>`. */
+const CONFIG_STORES = {
+  automation: {
+    key: AUTOMATIONS_KEY, seed: SEED_AUTOMATIONS, name: (c) => c.alias, state: "on",
+    attributes: (c) => ({ last_triggered: null, mode: c.mode || "single", current: 0 }),
+  },
+  scene: {
+    key: SCENES_KEY, seed: SEED_SCENES, name: (c) => c.name, state: "unknown",
+    attributes: (c) => ({ entity_id: Object.keys(c.entities || {}) }),
   },
 };
 
@@ -124,49 +154,52 @@ export function createMockHass(onChange) {
     onChange?.(hass, calls);
   };
 
-  const automations = () => ({ ...SEED_AUTOMATIONS, ...session.get(AUTOMATIONS_KEY, {}) });
+  const configs = (domain) => ({ ...CONFIG_STORES[domain].seed, ...session.get(CONFIG_STORES[domain].key, {}) });
 
-  /** Apply stored automation configs (harness session) to states and the entity registry. */
-  const syncAutomations = () => {
-    const stored = session.get(AUTOMATIONS_KEY, {});
-    for (const [id, config] of Object.entries(stored)) {
-      let entityId = Object.keys(hass.states).find((e) => e.startsWith("automation.") && String(hass.states[e].attributes.id) === id);
-      if (config === null) {
-        if (entityId) { delete hass.states[entityId]; delete hass.entities[entityId]; }
-        continue;
-      }
-      if (!entityId) {
-        entityId = `automation.${slug(config.alias)}`;
-        while (hass.states[entityId]) entityId += "_2";
-        hass.states[entityId] = {
-          entity_id: entityId, state: "on", last_changed: new Date().toISOString(), last_updated: new Date().toISOString(),
-          attributes: { friendly_name: config.alias, id, last_triggered: null, mode: config.mode || "single", current: 0 },
-        };
-        hass.entities[entityId] = { area_id: config.__area ?? null, device_id: null, hidden: false, entity_category: null };
-      } else {
-        hass.states[entityId] = { ...hass.states[entityId], attributes: { ...hass.states[entityId].attributes, friendly_name: config.alias } };
-        if (config.__area !== undefined) hass.entities[entityId] = { ...hass.entities[entityId], area_id: config.__area };
+  /** Apply stored automation / scene configs (harness session) to states and the entity registry. */
+  const syncConfigs = () => {
+    for (const [domain, store] of Object.entries(CONFIG_STORES)) {
+      for (const [id, config] of Object.entries(session.get(store.key, {}))) {
+        let entityId = Object.keys(hass.states).find((e) => e.startsWith(`${domain}.`) && String(hass.states[e].attributes.id) === id);
+        if (config === null) {
+          if (entityId) { delete hass.states[entityId]; delete hass.entities[entityId]; }
+          continue;
+        }
+        if (!entityId) {
+          entityId = `${domain}.${slug(store.name(config))}`;
+          while (hass.states[entityId]) entityId += "_2";
+          hass.states[entityId] = {
+            entity_id: entityId, state: store.state, last_changed: new Date().toISOString(), last_updated: new Date().toISOString(),
+            attributes: { friendly_name: store.name(config), id, ...store.attributes(config) },
+          };
+          hass.entities[entityId] = { area_id: config.__area ?? null, device_id: null, hidden: false, entity_category: null };
+        } else {
+          hass.states[entityId] = { ...hass.states[entityId], attributes: { ...hass.states[entityId].attributes, friendly_name: store.name(config) } };
+          if (config.__area !== undefined) hass.entities[entityId] = { ...hass.entities[entityId], area_id: config.__area };
+        }
       }
     }
   };
 
   const callApi = async (method, path, body) => {
     calls.push({ domain: "api", service: `${method} ${path}`, data: body ?? {} });
-    const match = /^config\/automation\/config\/(.+)$/.exec(path);
+    const match = /^config\/(automation|scene)\/config\/(.+)$/.exec(path);
     if (!match) throw new Error(`mock: unsupported API ${method} ${path}`);
-    const id = decodeURIComponent(match[1]);
-    const stored = session.get(AUTOMATIONS_KEY, {});
+    const [, domain] = match;
+    const id = decodeURIComponent(match[2]);
+    const { key } = CONFIG_STORES[domain];
+    const stored = session.get(key, {});
     if (method === "GET") {
-      const config = automations()[id];
+      const config = configs(domain)[id];
       if (!config) throw Object.assign(new Error("Resource not found"), { status_code: 404 });
       const { __area, ...clean } = config;
       return structuredClone(clean);
     }
     if (method === "POST") stored[id] = { ...stored[id], ...body, id };
     if (method === "DELETE") stored[id] = null;
-    session.set(AUTOMATIONS_KEY, stored);
+    session.set(key, stored);
     await new Promise((r) => setTimeout(r, 150));
-    syncAutomations();
+    syncConfigs();
     push();
     return { result: "ok" };
   };
@@ -186,10 +219,11 @@ export function createMockHass(onChange) {
       calls.push({ domain: "registry", service: "update", data: msg });
       hass.entities[msg.entity_id] = { ...hass.entities[msg.entity_id], area_id: msg.area_id };
       const id = hass.states[msg.entity_id]?.attributes?.id;
-      if (id) {
-        const stored = session.get(AUTOMATIONS_KEY, {});
-        stored[id] = { ...(stored[id] || automations()[id]), __area: msg.area_id };
-        session.set(AUTOMATIONS_KEY, stored);
+      const store = CONFIG_STORES[msg.entity_id.split(".")[0]];
+      if (id && store) {
+        const stored = session.get(store.key, {});
+        stored[id] = { ...(stored[id] || configs(msg.entity_id.split(".")[0])[id]), __area: msg.area_id };
+        session.set(store.key, stored);
       }
       push();
       return { entity_entry: hass.entities[msg.entity_id] };
@@ -216,6 +250,6 @@ export function createMockHass(onChange) {
   });
 
   hass = build();
-  syncAutomations();
+  syncConfigs();
   return { get hass() { return hass; }, calls };
 }

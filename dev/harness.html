@@ -57,7 +57,7 @@
     window.confirm = () => true;
     if (new URLSearchParams(location.search).has("fit")) localStorage.removeItem("controlz-ha.prefs");
     if (new URLSearchParams(location.search).has("fresh")) {
-      for (const key of ["controlz-harness-dashboard", "controlz-harness-user-data", "controlz-harness-automations"]) sessionStorage.removeItem(key);
+      for (const key of ["controlz-harness-dashboard", "controlz-harness-user-data", "controlz-harness-automations", "controlz-harness-scenes"]) sessionStorage.removeItem(key);
     }
     const log = document.getElementById("log");
     const print = (msg) => { log.textContent = `${msg}\n${log.textContent}`.slice(0, 4000); };

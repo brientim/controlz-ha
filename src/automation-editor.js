@@ -1,8 +1,10 @@
 import {
-  ACTION_KINDS, DEVICE_SERVICES, TRIGGER_KINDS, draftProblems, draftToConfig, duplicateConfig, emptyDraft, newAutomationId,
+  ACTION_KINDS, DEVICE_SERVICES, ROOM_DOMAINS, TRIGGER_KINDS, draftProblems, draftToConfig, duplicateConfig, emptyAction, emptyDraft,
+  newAutomationId, roomServices,
 } from "./automation-model.js";
 import { escapeHtml, navigate } from "./base.js";
-import { domainOf, friendlyName, sortedAreas } from "./model.js";
+import { areasOrder, hiddenLists } from "./hidden.js";
+import { areaOfEntity, domainOf, friendlyName, sortedAreas } from "./model.js";
 import { sheetFrame } from "./sheet.js";
 
 /**
@@ -21,10 +23,11 @@ const TRIGGER_DOMAINS = [
   "alarm_control_panel", "climate", "fan", "media_player",
 ];
 const DOMAIN_LABELS = {
-  binary_sensor: "Sensors (on / off)", sensor: "Sensors", light: "Lights", switch: "Switches", lock: "Locks", cover: "Coverings",
-  person: "People", device_tracker: "Device trackers", input_boolean: "Toggles", alarm_control_panel: "Alarms", climate: "Thermostats",
-  fan: "Fans", media_player: "Media players", humidifier: "Humidifiers", vacuum: "Vacuums", valve: "Valves",
+  binary_sensor: "Sensor", sensor: "Sensor", light: "Light", switch: "Switch", lock: "Lock", cover: "Covering",
+  person: "Person", device_tracker: "Tracker", input_boolean: "Toggle", alarm_control_panel: "Alarm", climate: "Thermostat",
+  fan: "Fan", media_player: "Media player", humidifier: "Humidifier", vacuum: "Vacuum", valve: "Valve",
 };
+const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const KNOWN_STATES = {
   binary_sensor: ["on", "off"], light: ["on", "off"], switch: ["on", "off"], fan: ["on", "off"], input_boolean: ["on", "off"],
   lock: ["locked", "unlocked", "jammed"], cover: ["open", "closed"], person: ["home", "not_home"], device_tracker: ["home", "not_home"],
@@ -35,18 +38,27 @@ const KNOWN_STATES = {
 const WAIT_STEP_MS = 250;
 const WAIT_MAX_MS = 10_000;
 
-/** Entity id of the automation with config `id`, once Home Assistant has reloaded it (null on timeout). */
-export async function waitForAutomation(getHass, id, { stepMs = WAIT_STEP_MS, maxMs = WAIT_MAX_MS } = {}) {
+/** Entity id of the `domain` entity with config `id`, once Home Assistant has reloaded it (null on timeout). */
+export async function waitForConfigEntity(getHass, domain, id, { stepMs = WAIT_STEP_MS, maxMs = WAIT_MAX_MS } = {}) {
   for (let waited = 0; waited <= maxMs; waited += stepMs) {
     const states = getHass()?.states || {};
-    const hit = Object.keys(states).find((e) => e.startsWith("automation.") && String(states[e]?.attributes?.id) === String(id));
+    const hit = Object.keys(states).find((e) => e.startsWith(`${domain}.`) && String(states[e]?.attributes?.id) === String(id));
     if (hit) return hit;
     await new Promise((r) => setTimeout(r, stepMs));
   }
   return null;
 }
 
-async function assignArea(getHass, entityId, areaId) {
+export const waitForAutomation = (getHass, id, opts) => waitForConfigEntity(getHass, "automation", id, opts);
+
+/** `<option>`s for a room picker: ControlZ dashboard order, hidden rooms left out unless `value` is one. */
+export function roomOptionsHtml(hass, dashboardConfig, value, placeholder) {
+  const hidden = hiddenLists(dashboardConfig).areas;
+  const rooms = sortedAreas(hass, { order: areasOrder(dashboardConfig) }).filter((a) => !hidden.has(a.area_id) || a.area_id === value);
+  return `${option("", placeholder, !value)}${rooms.map((a) => option(a.area_id, a.name, a.area_id === value)).join("")}`;
+}
+
+export async function assignArea(getHass, entityId, areaId) {
   const hass = getHass();
   const current = hass.entities?.[entityId]?.area_id ?? null;
   const wanted = areaId || null;
@@ -102,35 +114,60 @@ export class AutomationEditor {
     return null;
   }
 
+  get _dashboardConfig() {
+    return this._host._config || {};
+  }
+
+  _roomOptions(value, placeholder) {
+    return roomOptionsHtml(this.hass, this._dashboardConfig, value, placeholder);
+  }
+
+  /** Entities Home Assistant includes when a service targets a room (not hidden, no entity category). */
+  _targetable(id) {
+    const entry = this.hass.entities?.[id];
+    return !entry?.hidden && !entry?.hidden_by && !entry?.entity_category;
+  }
+
+  /** Entities of `domains` grouped by room (dashboard order, hidden rooms too), "No room" last. */
   _entities(domains) {
-    const states = this.hass?.states || {};
-    const groups = new Map();
-    for (const id of Object.keys(states)) {
-      const domain = domainOf(id);
-      if (!domains.includes(domain)) continue;
-      if (this.hass.entities?.[id]?.hidden || this.hass.entities?.[id]?.entity_category === "config") continue;
-      if (!groups.has(domain)) groups.set(domain, []);
-      groups.get(domain).push({ id, name: friendlyName(this.hass, id) });
+    const byArea = new Map();
+    for (const id of Object.keys(this.hass?.states || {})) {
+      if (!domains.includes(domainOf(id)) || !this._targetable(id)) continue;
+      const area = areaOfEntity(this.hass, id) || "";
+      if (!byArea.has(area)) byArea.set(area, []);
+      byArea.get(area).push({ id, name: friendlyName(this.hass, id) });
     }
-    return domains.filter((d) => groups.has(d)).map((d) => ({
-      domain: d,
-      items: groups.get(d).sort((a, b) => a.name.localeCompare(b.name)),
-    }));
+    const rooms = sortedAreas(this.hass, { order: areasOrder(this._dashboardConfig) });
+    const known = new Set(rooms.map((a) => a.area_id));
+    const loose = [...byArea].filter(([area]) => !known.has(area)).flatMap(([, items]) => items);
+    return [...rooms.map((a) => ({ label: a.name, items: byArea.get(a.area_id) || [] })), { label: "No room", items: loose }]
+      .filter((g) => g.items.length)
+      .map((g) => ({ ...g, items: g.items.sort((a, b) => a.name.localeCompare(b.name)) }));
   }
 
   _entitySelect(field, domains, value, placeholder) {
     const groups = this._entities(domains);
+    const label = (i) => (domains.length > 1 ? `${i.name} · ${DOMAIN_LABELS[domainOf(i.id)] || domainOf(i.id)}` : i.name);
     const options = groups.map((g) => {
-      const opts = g.items.map((i) => option(i.id, i.name, i.id === value)).join("");
-      return groups.length > 1 ? `<optgroup label="${escapeHtml(DOMAIN_LABELS[g.domain] || g.domain)}">${opts}</optgroup>` : opts;
+      const opts = g.items.map((i) => option(i.id, label(i), i.id === value)).join("");
+      return groups.length > 1 ? `<optgroup label="${escapeHtml(g.label)}">${opts}</optgroup>` : opts;
     }).join("");
     return `<select data-action="ed-field" data-field="${field}" aria-label="${escapeHtml(placeholder)}">
       ${option("", placeholder, !value)}${options}</select>`;
   }
 
-  _seg(action, items, current) {
+  /** Device kinds "Control a room" can target in `areaId` (plus `keep`, the one already chosen). */
+  _roomDomains(areaId, keep = "") {
+    const present = new Set(Object.keys(this.hass?.states || {})
+      .filter((id) => areaOfEntity(this.hass, id) === areaId && this._targetable(id))
+      .map(domainOf));
+    return Object.keys(ROOM_DOMAINS).filter((d) => present.has(d) || d === keep);
+  }
+
+  _seg(action, items, current, index = null) {
+    const at = index == null ? "" : ` data-index="${index}"`;
     return `<div class="btn-wrap" role="group">${items.map((k) =>
-      `<button type="button" class="btn secondary" data-action="${action}" data-kind="${k.id}" aria-pressed="${k.id === current}">${escapeHtml(k.label)}</button>`).join("")}</div>`;
+      `<button type="button" class="btn secondary" data-action="${action}" data-kind="${k.id}"${at} aria-pressed="${k.id === current}">${escapeHtml(k.label)}</button>`).join("")}</div>`;
   }
 
   _triggerFields() {
@@ -155,26 +192,49 @@ export class AutomationEditor {
       <label class="field"><span>Changes to</span>${to}</label>`;
   }
 
-  _actionFields() {
-    const a = this._draft.action;
-    if (a.kind === "scene") return `<label class="field"><span>Scene</span>${this._entitySelect("action.entity_id", ["scene"], a.entity_id, "Choose a scene…")}</label>`;
-    if (a.kind === "script") return `<label class="field"><span>Script</span>${this._entitySelect("action.entity_id", ["script"], a.entity_id, "Choose a script…")}</label>`;
+  _serviceSelect(field, services, value) {
+    return `<label class="field"><span>Do</span><select data-action="ed-field" data-field="${field}" aria-label="Do">
+      ${value ? "" : option("", "Choose…", true)}${services.map(([s, label]) => option(s, label, s === value)).join("")}</select></label>`;
+  }
+
+  _actionFields(a, i) {
+    const f = (key) => `actions.${i}.${key}`;
+    if (a.kind === "scene") return `<label class="field"><span>Scene</span>${this._entitySelect(f("entity_id"), ["scene"], a.entity_id, "Choose a scene…")}</label>`;
+    if (a.kind === "script") return `<label class="field"><span>Script</span>${this._entitySelect(f("entity_id"), ["script"], a.entity_id, "Choose a script…")}</label>`;
+    if (a.kind === "room") {
+      const room = `<label class="field"><span>Room</span><select data-action="ed-field" data-field="${f("area_id")}" aria-label="Room">
+        ${this._roomOptions(a.area_id, "Choose a room…")}</select></label>`;
+      if (!a.area_id) return room;
+      const domains = this._roomDomains(a.area_id, a.domain);
+      if (!domains.length) return `${room}<p class="note">This room has no lights, switches, coverings or other devices to control.</p>`;
+      const services = roomServices(a.domain);
+      return `${room}<div class="field-row">
+        <label class="field"><span>Devices</span><select data-action="ed-field" data-field="${f("domain")}" aria-label="Devices">
+          ${option("", "Choose…", !a.domain)}${domains.map((d) => option(d, `All ${ROOM_DOMAINS[d]}`, d === a.domain)).join("")}</select></label>
+        ${services.length ? this._serviceSelect(f("service"), services, a.service) : ""}</div>`;
+    }
     const services = DEVICE_SERVICES[domainOf(a.entity_id)] || [];
-    return `<label class="field"><span>Device</span>${this._entitySelect("action.entity_id", Object.keys(DEVICE_SERVICES), a.entity_id, "Choose a device…")}</label>
-      ${services.length ? `<label class="field"><span>Do</span><select data-action="ed-field" data-field="action.service" aria-label="Do">
-        ${services.map(([s, label]) => option(s, label, s === a.service)).join("")}</select></label>` : ""}`;
+    return `<label class="field"><span>Device</span>${this._entitySelect(f("entity_id"), Object.keys(DEVICE_SERVICES), a.entity_id, "Choose a device…")}</label>
+      ${services.length ? this._serviceSelect(f("service"), services, a.service) : ""}`;
+  }
+
+  _actionBlock(a, i, count) {
+    const head = count > 1
+      ? `<div class="ed-step-head"><span>Action ${i + 1}</span>
+          <button type="button" class="btn ghost" data-action="ed-remove-action" data-index="${i}" aria-label="Remove action ${i + 1}">Remove</button></div>`
+      : "";
+    return `<div class="ed-step${count > 1 ? " boxed" : ""}">${head}${this._seg("ed-action", ACTION_KINDS, a.kind, i)}${this._actionFields(a, i)}</div>`;
   }
 
   sheetBody() {
     const d = this._draft;
-    const areas = sortedAreas(this.hass);
     const body = `
       <div class="sheet-section">
         <label class="field"><span>Name</span>
           <input type="text" data-action="ed-field" data-field="alias" value="${escapeHtml(d.alias)}" placeholder="e.g. Porch light at sunset" ${this._configId ? "" : "autofocus"} /></label>
         <label class="field"><span>Room</span>
           <select data-action="ed-field" data-field="area_id" aria-label="Room">
-            ${option("", "No room", !d.area_id)}${areas.map((a) => option(a.area_id, a.name, a.area_id === d.area_id)).join("")}
+            ${this._roomOptions(d.area_id, "No room")}
           </select></label>
       </div>
       <div class="sheet-section">
@@ -184,13 +244,13 @@ export class AutomationEditor {
       </div>
       <div class="sheet-section">
         <div class="section-label">Then</div>
-        ${this._seg("ed-action", ACTION_KINDS, d.action.kind)}
-        ${this._actionFields()}
+        ${d.actions.map((a, i) => this._actionBlock(a, i, d.actions.length)).join("")}
+        <button type="button" class="btn secondary" data-action="ed-add-action">+ Add action</button>
       </div>
       ${this._problems.length || this._error ? `<div class="sheet-section">
         ${this._problems.map((p) => `<p class="error">${escapeHtml(p)}</p>`).join("")}
         ${this._error ? `<p class="error">${escapeHtml(this._error)}</p>` : ""}</div>` : ""}
-      <p class="note">For conditions, several steps or anything else, use Home Assistant's automation editor.</p>`;
+      <p class="note">For conditions, waits or anything else, use Home Assistant's automation editor.</p>`;
     const footer = `
       <button type="button" class="btn ghost" data-action="ed-advanced">Home Assistant editor</button>
       <button type="button" class="btn ghost" data-action="sheet-close">Cancel</button>
@@ -199,9 +259,38 @@ export class AutomationEditor {
   }
 
   _set(path, value) {
+    const step = /^actions\.(\d+)\.(\w+)$/.exec(path);
+    if (step) {
+      this._patchAction(Number(step[1]), { [step[2]]: value });
+      return;
+    }
     const [head, tail] = path.split(".");
     if (tail) this._draft[head] = { ...this._draft[head], [tail]: value };
     else this._draft[head] = value;
+  }
+
+  _patchAction(index, patch) {
+    this._draft.actions = this._draft.actions.map((a, i) => (i === index ? { ...a, ...patch } : a));
+  }
+
+  /** Keep an action's later choices valid after its device or room changes. */
+  _actionChanged(index, key) {
+    const a = this._draft.actions[index];
+    if (!a) return;
+    if (a.kind === "service" && key === "entity_id") {
+      const services = DEVICE_SERVICES[domainOf(a.entity_id)] || [];
+      if (!services.some(([s]) => s === a.service)) this._patchAction(index, { service: services[0]?.[0] || "" });
+    }
+    if (a.kind === "room" && (key === "area_id" || key === "domain")) {
+      let { domain } = a;
+      if (key === "area_id") {
+        const domains = this._roomDomains(a.area_id);
+        if (!domains.includes(domain)) domain = domains.includes("light") ? "light" : domains[0] || "";
+      }
+      const services = roomServices(domain);
+      const service = services.some(([s]) => s === a.service) ? a.service : services[0]?.[0] || "";
+      this._patchAction(index, { domain, service });
+    }
   }
 
   _rerender() {
@@ -213,9 +302,9 @@ export class AutomationEditor {
       "input:ed-field": (input) => this._set(input.dataset.field, input.value),
       "change:ed-field": (input) => {
         this._set(input.dataset.field, input.value);
-        if (input.dataset.field === "action.entity_id") {
-          const services = DEVICE_SERVICES[domainOf(input.value)] || [];
-          if (!services.some(([s]) => s === this._draft.action.service)) this._set("action.service", services[0]?.[0] || "");
+        const step = /^actions\.(\d+)\.(\w+)$/.exec(input.dataset.field);
+        if (step && step[2] !== "service") {
+          this._actionChanged(Number(step[1]), step[2]);
           this._rerender();
         }
         if (input.dataset.field === "trigger.entity_id") {
@@ -232,7 +321,19 @@ export class AutomationEditor {
         this._rerender();
       },
       "ed-action": (button) => {
-        this._draft.action = { kind: button.dataset.kind, entity_id: "", service: button.dataset.kind === "service" ? "" : "turn_on" };
+        const index = Number(button.dataset.index);
+        if (this._draft.actions[index]?.kind === button.dataset.kind) return;
+        this._draft.actions = this._draft.actions.map((a, i) => (i === index ? emptyAction(button.dataset.kind) : a));
+        this._rerender();
+      },
+      "ed-add-action": () => {
+        this._draft.actions = [...this._draft.actions, emptyAction("service")];
+        this._rerender();
+      },
+      "ed-remove-action": (button) => {
+        const index = Number(button.dataset.index);
+        this._draft.actions = this._draft.actions.filter((_, i) => i !== index);
+        if (!this._draft.actions.length) this._draft.actions = [emptyAction()];
         this._rerender();
       },
       "ed-advanced": () => {

@@ -1,5 +1,6 @@
 import { CzElement, escapeHtml } from "./base.js";
 import { domainOf, friendlyName, sceneLabel } from "./model.js";
+import { openSceneSheet } from "./scene-sheet.js";
 import { TOKENS } from "./styles.js";
 
 const RUN = {
@@ -32,7 +33,7 @@ const STYLES = `
 
 /**
  * Compact scene row for a room page (ControlZ scene header): one chip per scene / script;
- * tap runs it, right-click (long-press on Android) opens Home Assistant's more-info.
+ * tap runs it, right-click (long-press on Android) opens the scene sheet (scripts: Home Assistant's more-info).
  */
 export class SceneStrip extends CzElement {
   styles() {
@@ -69,7 +70,8 @@ export class SceneStrip extends CzElement {
       const chip = ev.target.closest?.(".chip");
       if (!chip) return;
       ev.preventDefault();
-      this.moreInfo(chip.dataset.entity);
+      if (domainOf(chip.dataset.entity) === "scene") openSceneSheet(this, chip.dataset.entity);
+      else this.moreInfo(chip.dataset.entity);
     };
     this.shadowRoot.addEventListener("contextmenu", this._onContext);
   }

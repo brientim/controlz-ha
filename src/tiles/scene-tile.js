@@ -1,5 +1,6 @@
 import { CzElement, escapeHtml } from "../base.js";
 import { domainOf, friendlyName, relativeTime } from "../model.js";
+import { openSceneSheet } from "../scene-sheet.js";
 import { SCENE_STYLES, TILE_STYLES } from "../styles.js";
 
 const KINDS = {
@@ -7,7 +8,10 @@ const KINDS = {
   script: { icon: "📜", label: "Script", run: ["script", "turn_on"] },
 };
 
-/** Scene / script tile in the ControlZ automation-tile style (Run). Automations have their own tile. */
+/**
+ * Scene / script tile in the ControlZ automation-tile style (Run). Tapping a scene opens the scene
+ * sheet (export for admins); a script opens Home Assistant's dialog. Automations have their own tile.
+ */
 export class SceneTile extends CzElement {
   styles() {
     return TILE_STYLES + SCENE_STYLES;
@@ -51,6 +55,7 @@ export class SceneTile extends CzElement {
   }
 
   onTileClick() {
-    this.moreInfo(this._config.entity);
+    if (domainOf(this._config.entity) === "scene") openSceneSheet(this, this._config.entity);
+    else this.moreInfo(this._config.entity);
   }
 }
