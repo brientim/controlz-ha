@@ -1,0 +1,21 @@
+import { entitiesForArea } from "./model.js";
+
+/**
+ * Area → tile items, recomputed only when the registries change (HA replaces
+ * `hass.entities` / `hass.devices` on registry updates) or entities appear in `hass.states`.
+ */
+const cache = new WeakMap();
+
+export function areaItems(hass, areaId) {
+  if (!hass?.entities) return [];
+  const statesCount = Object.keys(hass.states || {}).length;
+  let entry = cache.get(hass.entities);
+  if (!entry || entry.devices !== hass.devices || entry.statesCount !== statesCount) {
+    entry = { devices: hass.devices, statesCount, byArea: new Map() };
+    cache.set(hass.entities, entry);
+  }
+  if (!entry.byArea.has(areaId)) entry.byArea.set(areaId, entitiesForArea(hass, areaId));
+  return entry.byArea.get(areaId);
+}
+
+export const itemsKey = (items) => items.map((i) => `${i.entity_id}:${i.kind}`).join(",");

@@ -1,0 +1,22 @@
+{
+  "name": "controlz-ha",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ControlZ-style Rooms and Tiles for Home Assistant (Lovelace custom cards + dashboard strategy).",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/brientim/controlz-ha.git"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs --minify",
+    "watch": "node scripts/build.mjs --watch",
+    "test": "node --test 'test/*.test.js'",
+    "serve": "python3 -m http.server 8765"
+  },
+  "devDependencies": {
+    "@mdi/js": "^7.4.47",
+    "esbuild": "^0.25.0"
+  }
+}

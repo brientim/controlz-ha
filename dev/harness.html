@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ControlZ HA — harness</title>
+  <style>
+    :root {
+      --primary-background-color: #f4f5f7;
+      --card-background-color: #fff;
+      --primary-text-color: #111827;
+      --secondary-text-color: #6b7280;
+      --divider-color: #e5e7eb;
+    }
+    html.dark {
+      --primary-background-color: #111111;
+      --card-background-color: #1c1c1c;
+      --secondary-background-color: #262626;
+      --primary-text-color: #e1e1e1;
+      --secondary-text-color: #9b9b9b;
+      --divider-color: rgba(225,225,225,0.12);
+    }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--primary-background-color); color: var(--primary-text-color); }
+    header { position: sticky; top: 0; z-index: 5; background: #03a9f4; color: #fff; }
+    .bar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; flex-wrap: wrap; }
+    .bar h1 { font-size: 1.1rem; margin: 0 12px 0 0; }
+    .tabs { display: flex; overflow-x: auto; padding: 0 8px; }
+    .tabs a { color: rgba(255,255,255,0.8); text-decoration: none; padding: 10px 14px; font-size: 0.9rem; white-space: nowrap; border-bottom: 2px solid transparent; }
+    .tabs a.active { color: #fff; border-bottom-color: #fff; font-weight: 600; }
+    select, button { font: inherit; }
+    #log { position: fixed; right: 8px; bottom: 8px; max-width: 420px; max-height: 30vh; overflow: auto; font: 11px ui-monospace, monospace; background: rgba(17,24,39,0.88); color: #d1fae5; padding: 8px; border-radius: 8px; z-index: 20; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="bar">
+      <h1>ControlZ</h1>
+      <label>Tile size
+        <select id="size"><option>large</option><option>thin</option><option>compact</option></select>
+      </label>
+      <label><input type="checkbox" id="dark" /> Dark theme</label>
+    </div>
+    <nav class="tabs" id="tabs"></nav>
+  </header>
+  <main id="view"></main>
+  <div id="log"></div>
+
+  <script type="module">
+    import "../dist/controlz-ha.js";
+    import { createMockHass } from "./mock-hass.js";
+
+    window.confirm = () => true;
+    const log = document.getElementById("log");
+    const print = (msg) => { log.textContent = `${msg}\n${log.textContent}`.slice(0, 4000); };
+
+    let cards = [];
+    const mock = createMockHass((hass, calls) => {
+      const c = calls[calls.length - 1];
+      print(`${c.domain}.${c.service} ${JSON.stringify(c.data)}`);
+      for (const card of cards) card.hass = hass;
+    });
+    window.__mock = mock;
+
+    document.addEventListener("hass-more-info", (e) => print(`more-info ${e.detail.entityId}`));
+
+    const params = new URLSearchParams(location.search);
+    const sizeSelect = document.getElementById("size");
+    sizeSelect.value = params.get("size") || "large";
+    const dark = document.getElementById("dark");
+    dark.checked = params.get("dark") === "1";
+    document.documentElement.classList.toggle("dark", dark.checked);
+
+    const Strategy = customElements.get("ll-strategy-dashboard-controlz-rooms");
+    let dashboard;
+
+    function currentPath() {
+      const seg = location.pathname.split("/").pop();
+      return seg.startsWith("room-") || seg === "room-icons" ? seg : "rooms";
+    }
+
+    function renderView(_event, forcedPath) {
+      const path = forcedPath || currentPath();
+      const view = dashboard.views.find((v) => v.path === path) || dashboard.views[0];
+      document.getElementById("tabs").innerHTML = dashboard.views
+        .map((v) => `<a href="#" data-path="${v.path}" class="${v === view ? "active" : ""}">${v.title}</a>`)
+        .join("");
+      const main = document.getElementById("view");
+      main.replaceChildren();
+      cards = view.cards.map((cfg) => {
+        const el = document.createElement(cfg.type.replace("custom:", ""));
+        el.setConfig(cfg);
+        el.hass = mock.hass;
+        main.append(el);
+        return el;
+      });
+    }
+
+    async function regenerate() {
+      dashboard = await Strategy.generate({ type: "custom:controlz-rooms", tile_size: sizeSelect.value, icons_view: true }, mock.hass);
+      renderView();
+    }
+
+    const base = location.pathname.split("/").slice(0, 2).join("/");
+    document.getElementById("tabs").addEventListener("click", (e) => {
+      const a = e.target.closest("a[data-path]");
+      if (!a) return;
+      e.preventDefault();
+      const p = a.dataset.path;
+      history.pushState(null, "", p === "rooms" ? `${base}/harness.html${location.search}` : `${base}/${p}${location.search}`);
+      renderView();
+    });
+    window.addEventListener("location-changed", renderView);
+    window.addEventListener("popstate", renderView);
+    sizeSelect.addEventListener("change", regenerate);
+    dark.addEventListener("change", () => document.documentElement.classList.toggle("dark", dark.checked));
+
+    /** Every tile in every view at every size: exact contract height, nothing clipped or overflowing. */
+    const CONTRACT = { large: 200, thin: 100, compact: 150 };
+    const deepTiles = (root, out = []) => {
+      for (const el of root.querySelectorAll("*")) {
+        if (el.shadowRoot) {
+          const tile = [...el.shadowRoot.children].find((c) => c.matches("article.tile"));
+          if (tile) out.push({ host: el, tile });
+          deepTiles(el.shadowRoot, out);
+        }
+      }
+      return out;
+    };
+    window.__fitReport = async () => {
+      const problems = [];
+      let checked = 0;
+      for (const size of Object.keys(CONTRACT)) {
+        sizeSelect.value = size;
+        dashboard = await Strategy.generate({ type: "custom:controlz-rooms", tile_size: size }, mock.hass);
+        for (const view of dashboard.views) {
+          renderView(null, view.path);
+          await new Promise((r) => setTimeout(r, 30));
+          for (const { host, tile } of deepTiles(document.getElementById("view"))) {
+            checked += 1;
+            const id = `${size} ${view.path} ${host.localName.replace("controlz-", "")} ${host._config.entity || host._config.area}`;
+            const h = Math.round(tile.getBoundingClientRect().height);
+            if (h !== CONTRACT[size]) problems.push(`${id}: height ${h} != ${CONTRACT[size]}`);
+            if (tile.scrollHeight > tile.clientHeight + 1) problems.push(`${id}: clipped vertically (${tile.scrollHeight} > ${tile.clientHeight})`);
+            for (const row of tile.querySelectorAll(".row, .footer, .header")) {
+              if (row.scrollWidth > row.clientWidth + 1) problems.push(`${id}: ${row.className} overflows (${row.scrollWidth} > ${row.clientWidth})`);
+            }
+            const name = tile.querySelector(".name");
+            if (name && name.getBoundingClientRect().width < 48) problems.push(`${id}: name squeezed to ${Math.round(name.getBoundingClientRect().width)}px`);
+          }
+        }
+      }
+      return { viewport: innerWidth, checked, problems };
+    };
+
+    const initial = params.get("view");
+    if (initial) history.replaceState(null, "", `${base}/${initial}${location.search}`);
+    regenerate().then(async () => {
+      if (params.get("fit") !== "1") return;
+      const report = await window.__fitReport();
+      const pre = document.createElement("pre");
+      pre.id = "fit-report";
+      pre.textContent = JSON.stringify(report);
+      document.body.append(pre);
+    });
+  </script>
+</body>
+</html>
