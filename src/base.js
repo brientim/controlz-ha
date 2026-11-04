@@ -53,6 +53,7 @@ export class CzElement extends HTMLElement {
     window.removeEventListener("pointerup", this._onPointerUp);
     window.removeEventListener("pointercancel", this._onPointerUp);
     window.removeEventListener(PREFS_EVENT, this._onPrefs);
+    this.closeSheet();
   }
 
   _applySize() {
@@ -72,6 +73,27 @@ export class CzElement extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     this.requestRender();
+    if (this._sheet?.isConnected) this._sheet.refresh();
+  }
+
+  /** Open this tile's controls sheet (`sheetBody()` markup; buttons run this tile's `actions`). */
+  openSheet() {
+    if (!this._hass || !this._config) return;
+    this._sheet ||= document.createElement("controlz-sheet");
+    this._sheet.show(this);
+  }
+
+  closeSheet() {
+    if (this._sheet?.isConnected) this._sheet.close();
+  }
+
+  sheetBody() {
+    return "";
+  }
+
+  /** Entity whose Home Assistant dialog "More details" opens. */
+  sheetDetailsEntity() {
+    return this._config?.entity;
   }
 
   get hass() {

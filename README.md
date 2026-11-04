@@ -94,7 +94,7 @@ Download `controlz-ha.js` from the [latest release](https://github.com/brientim/
 | Scene | `scene.*`, `script.*`, `automation.*` |
 | Other | fan, climate, media player, humidifier, vacuum, valve, water heater |
 
-Hidden entities and config/diagnostic entities are skipped. Tapping a device tile opens Home Assistant's own more-info dialog.
+Hidden entities and config/diagnostic entities are skipped. Tapping a light opens the compact ControlZ light sheet (on/off, brightness, Warm / Neutral / Cool, colours); **More details** there opens Home Assistant's own dialog. Other device tiles open Home Assistant's dialog directly. ControlZ sheets fit any window: their content scrolls when the window is short, and they become a bottom sheet on phones.
 
 ### Room icons
 

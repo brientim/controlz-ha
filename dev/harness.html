@@ -178,6 +178,24 @@
         await new Promise((r) => setTimeout(r, 50));
         if (open === "menu") deepFind("controlz-view-menu").shadowRoot.querySelector("[data-toggle]").click();
         if (open === "security") deepFind("[data-banner]").click();
+        if (open === "light-sheet") deepFind("controlz-light-tile .color-btn, .color-btn[data-action=color]").click();
+        if (open === "room-sheet") deepFind("[data-action=sheet-open]").click();
+        if (open.endsWith("-sheet")) {
+          await new Promise((r) => setTimeout(r, 50));
+          const sheet = document.querySelector("controlz-sheet")?.shadowRoot.querySelector(".sheet");
+          const body = document.querySelector("controlz-sheet")?.shadowRoot.querySelector(".sheet-body");
+          const r = sheet?.getBoundingClientRect();
+          const pre = document.createElement("pre");
+          pre.id = "sheet-report";
+          pre.textContent = JSON.stringify(r ? {
+            viewport: [innerWidth, innerHeight],
+            sheet: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)],
+            fits: r.left >= 0 && r.top >= 0 && r.right <= innerWidth + 0.5 && r.bottom <= innerHeight + 0.5,
+            bodyScrolls: body.scrollHeight > body.clientHeight + 1,
+            footVisible: (() => { const f = sheet.querySelector(".sheet-foot").getBoundingClientRect(); return f.bottom <= innerHeight + 0.5; })(),
+          } : { error: "no sheet" });
+          document.body.append(pre);
+        }
       }
       if (params.get("fit") !== "1") return;
       const report = await window.__fitReport();

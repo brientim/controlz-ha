@@ -4,18 +4,9 @@ import { rangeRow, syncRange } from "./controls.js";
 import { ICONS } from "./icons.js";
 import { followGradient, roomSummary } from "./model.js";
 import { resolveAreaIcon, roomIconSvg } from "./room-icons.js";
-import { SHEET_STYLES, TILE_STYLES } from "./styles.js";
+import { coverControls, lightControls, sheetFrame } from "./sheet.js";
+import { TILE_STYLES } from "./styles.js";
 import { oscRow } from "./tiles/cover-tile.js";
-
-const SWATCHES = [
-  [255, 147, 41], [255, 214, 102], [255, 255, 255], [249, 115, 22],
-  [236, 72, 153], [168, 85, 247], [59, 130, 246], [34, 197, 94], [239, 68, 68],
-];
-const CT_PRESETS = [
-  { label: "Warm", kelvin: 2700, bg: "#ffd7a1" },
-  { label: "Neutral", kelvin: 4000, bg: "#fff1dc" },
-  { label: "Cool", kelvin: 6500, bg: "#dbe9ff" },
-];
 
 /**
  * ControlZ room master tile for a Home Assistant area.
@@ -39,7 +30,7 @@ export class RoomCard extends CzElement {
   }
 
   styles() {
-    return TILE_STYLES + SHEET_STYLES;
+    return TILE_STYLES;
   }
 
   _summary() {
@@ -47,6 +38,11 @@ export class RoomCard extends CzElement {
   }
 
   view() {
+    const model = this._model();
+    return { model, html: this._html(model) };
+  }
+
+  _model() {
     const area = this._hass.areas?.[this._config.area];
     const s = this._summary();
     const hasLights = s.lights.length > 0;
@@ -79,9 +75,8 @@ export class RoomCard extends CzElement {
       ctable: s.ctLights.length > 0,
       positionable: s.positionableCovers.length > 0,
       navigable: !!this._config.navigation_path || !!this._config.select_area,
-      sheet: !!this._sheetOpen,
     };
-    return { model, html: this._html(model) };
+    return model;
   }
 
   _chips(m, placement) {
@@ -145,38 +140,17 @@ export class RoomCard extends CzElement {
     return rows.length ? `<div class="controls">${rows.join("")}</div>` : "";
   }
 
-  _sheet(m) {
-    if (!m.sheet) return "";
-    const lights = m.hasLights
-      ? `<div class="sheet-section">
-          <div class="section-label">Lights</div>
-          <div class="row osc">
-            <button type="button" class="btn" data-action="power" data-on="1">On</button>
-            <button type="button" class="btn" data-action="power" data-on="0">Off</button>
-          </div>
-          ${m.dimmable ? this._slider("bri", m.brightness, "Room brightness") : ""}
-          ${m.ctable ? `<div class="ct-row">${CT_PRESETS.map((p) =>
-            `<button type="button" class="ct-btn" data-action="ct" data-kelvin="${p.kelvin}" style="background:${p.bg}">${p.label}</button>`).join("")}</div>` : ""}
-          ${m.colorable ? `<div class="swatches">${SWATCHES.map((rgb) =>
-            `<button type="button" class="swatch" data-action="swatch" data-rgb="${rgb.join(",")}"
-               style="background:rgb(${rgb.join(",")})" aria-label="Colour rgb ${rgb.join(" ")}"></button>`).join("")}</div>` : ""}
-        </div>`
-      : "";
-    const covers = m.hasCovers
-      ? `<div class="sheet-section">
-          <div class="section-label">Coverings · ${m.coverStatus}</div>
-          ${m.positionable ? this._slider("cover-position", m.coverPosition, "Coverings position (100 is open)") : ""}
-          ${oscRow("cover-osc")}
-        </div>`
-      : "";
-    return `<div class="sheet-backdrop" data-action="sheet-close">
-      <div class="sheet" data-action="sheet-stay" role="dialog" aria-label="${escapeHtml(m.name)} controls">
-        <h3>${escapeHtml(m.name)}</h3>
-        ${lights}
-        ${covers}
-        <button type="button" class="btn close" data-action="sheet-close">Done</button>
-      </div>
-    </div>`;
+  sheetBody() {
+    const m = this._model();
+    const body = [
+      m.hasLights && lightControls({ label: "Lights", dimmable: m.dimmable, brightness: m.brightness, ct: m.ctable, color: m.colorable }),
+      m.hasCovers && coverControls({ label: `Coverings · ${m.coverStatus}`, positionable: m.positionable, position: m.coverPosition }),
+    ].filter(Boolean).join("");
+    return sheetFrame({ title: m.name, subtitle: m.hasLights ? `Lights ${m.lightStatus}` : "", body });
+  }
+
+  sheetDetailsEntity() {
+    return null;
   }
 
   _html(m) {
@@ -194,8 +168,7 @@ export class RoomCard extends CzElement {
           ${compact ? "" : this._chips(m, "trailing")}
         </div>
         ${this._controls(m)}
-      </article>
-      ${this._sheet(m)}`;
+      </article>`;
   }
 
   get actions() {
@@ -214,15 +187,7 @@ export class RoomCard extends CzElement {
         const ids = s().dimmableLights;
         if (ids.length) this.callService("light", "turn_on", { entity_id: ids, brightness_pct: Number(input.value) });
       },
-      "sheet-open": () => {
-        this._sheetOpen = true;
-        this.requestRender(true);
-      },
-      "sheet-close": () => {
-        this._sheetOpen = false;
-        this.requestRender(true);
-      },
-      "sheet-stay": () => {},
+      "sheet-open": () => this.openSheet(),
       ct: (button) => {
         const ids = s().ctLights;
         if (ids.length) this.callService("light", "turn_on", { entity_id: ids, color_temp_kelvin: Number(button.dataset.kelvin) });
@@ -246,9 +211,6 @@ export class RoomCard extends CzElement {
   onTileClick() {
     if (this._config.select_area) fireEvent(this, "controlz-select-area", { area: this._config.area });
     else if (this._config.navigation_path) navigate(this._config.navigation_path);
-    else {
-      this._sheetOpen = true;
-      this.requestRender(true);
-    }
+    else this.openSheet();
   }
 }

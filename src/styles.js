@@ -232,15 +232,41 @@ export const SHEET_STYLES = `
     position: fixed; inset: 0; background: rgba(15,23,42,0.45); z-index: 10;
     display: flex; align-items: center; justify-content: center; padding: 16px;
   }
+  /* Fits any window: capped height with its own scroll; a bottom sheet on phones. */
   .sheet {
     width: min(360px, 100%); background: var(--cz-card-bg); color: var(--cz-text);
     border-radius: 18px; padding: 16px; box-shadow: 0 20px 50px rgba(0,0,0,0.3);
     display: flex; flex-direction: column; gap: 12px; cursor: default;
-    max-height: calc(100vh - 32px); overflow-y: auto;
+    max-height: min(640px, calc(100vh - 32px)); max-height: min(640px, calc(100dvh - 32px));
+    overflow: hidden;
   }
+  .sheet-head { display: flex; align-items: flex-start; gap: 8px; flex-shrink: 0; }
+  .sheet-titles { flex: 1; min-width: 0; }
+  .sheet h3 { margin: 0; font-size: 1.05rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sheet-sub { font-size: 0.78rem; color: var(--cz-text-secondary); margin-top: 2px; }
+  .sheet-x {
+    width: 32px; height: 32px; border-radius: 50%; border: none; background: var(--cz-bg-secondary);
+    color: var(--cz-text); font-size: 0.9rem; cursor: pointer; flex-shrink: 0;
+  }
+  .sheet-body { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
+  .sheet-foot { display: flex; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
+  .sheet-foot .btn { flex: 0 0 auto; min-width: 88px; }
+  .btn.ghost { background: transparent; color: var(--cz-text); border-color: var(--cz-border); }
   .sheet-section { display: flex; flex-direction: column; gap: 10px; }
   .sheet-section + .sheet-section { padding-top: 12px; border-top: 1px solid var(--cz-border); }
-  .sheet h3 { margin: 0; font-size: 1.05rem; }
+  @media (max-width: 520px) {
+    .sheet-backdrop { align-items: flex-end; padding: 0; }
+    .sheet {
+      width: 100%; border-radius: 18px 18px 0 0;
+      max-height: 85vh; max-height: 85dvh;
+      padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    }
+  }
+  @media (max-height: 520px) {
+    .sheet { gap: 8px; padding: 12px; }
+    .sheet-body, .sheet-section { gap: 8px; }
+    .swatch { width: 28px; height: 28px; }
+  }
   .sheet .section-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--cz-text-secondary); letter-spacing: 0.04em; }
   .sheet .row { margin: 0; }
   .swatches { display: flex; flex-wrap: wrap; gap: 8px; }

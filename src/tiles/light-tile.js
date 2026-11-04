@@ -12,6 +12,7 @@ import {
   lightBadge,
   lightCapabilities,
 } from "../model.js";
+import { lightControls, sheetFrame } from "../sheet.js";
 import { TILE_STYLES } from "../styles.js";
 
 /** Light, wall switch and outlet tile: toggle + status chip + colour icon; Large adds the dimmer. */
@@ -38,7 +39,7 @@ export class LightTile extends CzElement {
     const classes = ["tile", model.on && "on", model.rgb && "follows", model.offline && "offline"].filter(Boolean).join(" ");
     const style = model.rgb ? ` style="--follow-bg:${followGradient(model.rgb)}"` : "";
     const colorBtn = model.caps.color || model.caps.ct
-      ? `<button type="button" class="color-btn" data-action="color" title="Colour" aria-label="Colour and temperature">${ICONS.color}</button>`
+      ? `<button type="button" class="color-btn" data-action="color" title="Colour" aria-label="${escapeHtml(model.name)} colour and brightness">${ICONS.color}</button>`
       : "";
     const dimmer = model.caps.dimmable
       ? rangeRow({ kind: "brightness", action: "bri", value: model.bri, label: "Brightness", extraClass: "large-only", disabled: model.offline })
@@ -74,11 +75,30 @@ export class LightTile extends CzElement {
       "input:bri": syncRange,
       "change:bri": (input) =>
         this.callService("light", "turn_on", { entity_id: entityId, brightness_pct: Number(input.value) }),
-      color: () => this.moreInfo(entityId),
+      color: () => this.openSheet(),
+      power: (button) =>
+        this.callService(domain, button.dataset.on === "1" ? "turn_on" : "turn_off", { entity_id: entityId }),
+      ct: (button) =>
+        this.callService("light", "turn_on", { entity_id: entityId, color_temp_kelvin: Number(button.dataset.kelvin) }),
+      swatch: (button) =>
+        this.callService("light", "turn_on", { entity_id: entityId, rgb_color: button.dataset.rgb.split(",").map(Number) }),
     };
   }
 
+  /** ControlZ light sheet; "More details" opens Home Assistant's full dialog. */
+  sheetBody() {
+    const entityId = this._config.entity;
+    const stateObj = this._hass.states[entityId];
+    const caps = domainOf(entityId) === "light" ? lightCapabilities(stateObj) : { color: false, ct: false, dimmable: false };
+    return sheetFrame({
+      title: this._config.name || friendlyName(this._hass, entityId),
+      subtitle: lightBadge(stateObj),
+      body: lightControls({ dimmable: caps.dimmable, brightness: brightnessPct(stateObj) ?? 0, ct: caps.ct, color: caps.color }),
+      detailsEntity: entityId,
+    });
+  }
+
   onTileClick() {
-    this.moreInfo(this._config.entity);
+    this.openSheet();
   }
 }

@@ -4,6 +4,7 @@ import { RoomCard } from "./room-card.js";
 import { RoomIconsCard } from "./room-icons-card.js";
 import { RoomsApp } from "./rooms-app.js";
 import { SceneStrip } from "./scene-strip.js";
+import { CzSheet } from "./sheet.js";
 import { ControlZRoomsStrategy } from "./strategy.js";
 import { createTile } from "./tile-factory.js";
 import { ViewMenu } from "./view-menu.js";
@@ -68,6 +69,7 @@ const ELEMENTS = {
   "controlz-room-icons-card": RoomIconsCard,
   "controlz-scene-strip": SceneStrip,
   "controlz-view-menu": ViewMenu,
+  "controlz-sheet": CzSheet,
   "controlz-rooms-app": RoomsApp,
   "ll-strategy-dashboard-controlz-rooms": ControlZRoomsStrategy,
 };
