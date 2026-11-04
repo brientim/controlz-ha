@@ -5,8 +5,10 @@
  */
 export const SIZES = ["large", "thin", "compact"];
 export const NAVS = ["tabs", "sidebar"];
-/** View menu presets; `tile_scale` in YAML accepts any value from 0.4 to 1.5. */
-export const SCALES = [1, 0.8, 0.6];
+/** View menu slider range (%); `tile_scale` in YAML accepts any value from 0.4 to 1.5. */
+export const SCALE_MIN = 50;
+export const SCALE_MAX = 120;
+export const SCALE_STEP = 5;
 export const PREFS_EVENT = "controlz-ha-prefs";
 
 const KEY = "controlz-ha.prefs";

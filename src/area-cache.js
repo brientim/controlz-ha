@@ -1,3 +1,4 @@
+import { hiddenLists } from "./hidden.js";
 import { entitiesForArea } from "./model.js";
 
 /**
@@ -16,6 +17,13 @@ export function areaItems(hass, areaId) {
   }
   if (!entry.byArea.has(areaId)) entry.byArea.set(areaId, entitiesForArea(hass, areaId));
   return entry.byArea.get(areaId);
+}
+
+/** Area items without the entities hidden on this dashboard (`hide_entities`). */
+export function visibleItems(hass, areaId, config) {
+  const { entities } = hiddenLists(config);
+  const items = areaItems(hass, areaId);
+  return entities.size ? items.filter((i) => !entities.has(i.entity_id)) : items;
 }
 
 export const itemsKey = (items) => items.map((i) => `${i.entity_id}:${i.kind}`).join(",");

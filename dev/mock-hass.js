@@ -65,7 +65,19 @@ export function createMockHass(onChange) {
       for (const id of toArray(data.entity_id)) handlers[domain]?.(service, data, id);
       onChange?.(hass, calls);
     },
-    callWS: async () => [],
+    user: { is_admin: true, name: "Harness" },
+    // Dashboard config for "Hide rooms & devices", kept for the browser session.
+    callWS: async (msg) => {
+      const key = "controlz-harness-dashboard";
+      if (msg.type === "lovelace/config") {
+        return JSON.parse(sessionStorage.getItem(key) || '{"strategy":{"type":"custom:controlz-rooms"}}');
+      }
+      if (msg.type === "lovelace/config/save") {
+        sessionStorage.setItem(key, JSON.stringify(msg.config));
+        return null;
+      }
+      return [];
+    },
   });
 
   hass = build();

@@ -1,3 +1,4 @@
+import { HIDDEN_EVENT } from "./hidden.js";
 import { PREFS_EVENT, SIZES, effectiveSize } from "./prefs.js";
 
 export { SIZES };
@@ -36,10 +37,12 @@ export class CzElement extends HTMLElement {
       this._dragging = false;
       this.requestRender();
     };
+    this._onHidden = () => this.requestRender(true);
     this._onPrefs = () => {
       if (!this._config) return;
+      const before = this.getAttribute("size");
       this._applySize();
-      this.requestRender(true);
+      if (this.getAttribute("size") !== before) this.requestRender(true);
     };
   }
 
@@ -47,9 +50,11 @@ export class CzElement extends HTMLElement {
     window.addEventListener("pointerup", this._onPointerUp);
     window.addEventListener("pointercancel", this._onPointerUp);
     window.addEventListener(PREFS_EVENT, this._onPrefs);
+    window.addEventListener(HIDDEN_EVENT, this._onHidden);
   }
 
   disconnectedCallback() {
+    window.removeEventListener(HIDDEN_EVENT, this._onHidden);
     window.removeEventListener("pointerup", this._onPointerUp);
     window.removeEventListener("pointercancel", this._onPointerUp);
     window.removeEventListener(PREFS_EVENT, this._onPrefs);

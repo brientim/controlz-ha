@@ -37,9 +37,13 @@ You get an **All Rooms** view (security banner plus a tile per room) and one vie
 
 ### View menu
 
-Every page has a **View** menu (top right; in the sidebar next to the title) to pick the **tile size** (Large / Thin / Compact), the **scale** (100% / 80% / 60%) and **Rooms** layout (Tabs / Sidebar). The choice is saved on that device only, so a wall tablet can use Compact + Sidebar while a phone keeps Large + Tabs; **Use dashboard defaults** clears it. Tile size and scale change immediately; switching Tabs / Sidebar reloads the page.
+Every page has a **View** menu (top right; in the sidebar next to the title) to pick the **tile size** (Large / Thin / Compact), the **scale** (slider 50–120%, plus 50 / 60 / 80 / 100% buttons) and **Rooms** layout (Tabs / Sidebar). The choice is saved on that device only, so a wall tablet can use Compact + Sidebar while a phone keeps Large + Tabs; **Use dashboard defaults** clears it. Tile size and scale change immediately; switching Tabs / Sidebar reloads the page.
 
-**Scale** shrinks everything below the page header together — tiles, controls, text and spacing — so tiles keep their look, controls keep fitting, and more tiles fit on screen (60% shows about 1.7× as many per row). The header, View menu and controls sheets stay full size. Set a dashboard default with `tile_scale` (any value from 0.4 to 1.5). At 60% text and buttons are small; 80% is a good middle ground on touch screens.
+**Scale** shrinks everything below the page header together — tiles, controls, text and spacing — so tiles keep their look, controls keep fitting, and more tiles fit on screen (60% shows about 1.7× as many per row). The header, View menu and controls sheets stay full size. Set a dashboard default with `tile_scale` (any value from 0.4 to 1.5). At 50–60% text and buttons are small; 80% is a good middle ground on touch screens.
+
+### Hide rooms and devices
+
+**View → Hide rooms & devices…** (Home Assistant admins, on the ControlZ dashboard) shows a hide / show button on every room tile, device tile and sidebar room. Hidden items stay dimmed while you edit so you can bring them back; press **Done** when finished. The choice is saved in the dashboard config (`hide_areas`, `hide_entities`), so it applies on every device. Hidden devices also drop out of their room tile (on/off, brightness, badge counts). They still count for the security banner — use `security_exclude` for that. With tabs, the page reloads after Done so hidden rooms leave the tab bar.
 
 ### Security banner
 
@@ -119,7 +123,8 @@ strategy:
   tile_size: large                 # large | thin | compact (each device can override in the View menu)
   tile_scale: 1                    # 0.4–1.5, e.g. 0.6 = 40% smaller (View menu: 100 / 80 / 60%)
   areas_order: [office, kitchen]   # pinned first
-  hide_areas: [utility]            # left out
+  hide_areas: [utility]            # rooms left out (View → Hide rooms & devices edits this)
+  hide_entities: [switch.kettle]   # devices left out of tiles and room controls
   scenes_style: chips              # chips | tiles
   security_include: []             # only these entity ids raise the security banner
   security_exclude: [binary_sensor.office_window]   # never raise the banner
@@ -154,7 +159,7 @@ tile_size: thin
 npm install
 npm test            # unit tests (node:test)
 npm run build       # dist/controlz-ha.js
-npm run serve       # then open http://127.0.0.1:8765/dev/harness.html
+npm run serve       # then open http://127.0.0.1:8765/dev/harness.html (add ?fresh=1 to clear saved hides)
 ```
 
 `dev/harness.html` renders the dashboard against a mock `hass` (`dev/fixture.js`); service calls change the fixture state and show in a log overlay. Query parameters: `?view=room-office&size=thin&dark=1&nav=sidebar&open=menu|security`. `?fit=1` measures every tile at every size and reports any that are off-contract, clipped, overflowing or off-screen; add `&scale=0.6` and `&nav=sidebar` to check those too.

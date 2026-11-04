@@ -1,9 +1,13 @@
 import { areaItems, itemsKey } from "./area-cache.js";
 import { escapeHtml, fireEvent } from "./base.js";
+import {
+  EDIT_EVENT, HIDDEN_EVENT, hiddenAreasChangedThisSession, hiddenLists, isEditing, setEditing, setHidden,
+} from "./hidden.js";
 import { groupBySection, securityReport, sortedAreas } from "./model.js";
-import { PREFS_EVENT, effectiveScale, effectiveSize } from "./prefs.js";
+import { PREFS_EVENT, effectiveNav, effectiveScale, effectiveSize } from "./prefs.js";
 import { resolveAreaIcon, roomIconSvg } from "./room-icons.js";
-import { GRID_STYLES, SHEET_STYLES } from "./styles.js";
+import { sheetFrame } from "./sheet.js";
+import { GRID_STYLES } from "./styles.js";
 import { createTile } from "./tile-factory.js";
 
 export const iconOptions = (config) => ({
@@ -12,16 +16,36 @@ export const iconOptions = (config) => ({
   ...(config.icon_source ? { icon_source: config.icon_source } : {}),
 });
 
-export const viewMenuHtml = (config) =>
+/** Hidden lists forwarded to child cards so room tiles leave hidden devices out of their counts. */
+export const hiddenOptions = (config) => ({
+  ...(config.hide_areas ? { hide_areas: config.hide_areas } : {}),
+  ...(config.hide_entities ? { hide_entities: config.hide_entities } : {}),
+});
+
+export const viewMenuHtml = (config, hass) =>
   config.show_menu === false
     ? ""
     : `<controlz-view-menu default-size="${escapeHtml(config.tile_size || "large")}"
         default-nav="${escapeHtml(config.room_nav || "tabs")}" default-scale="${escapeHtml(String(config.tile_scale ?? 1))}"
-        ${config.show_nav_menu ? "show-nav" : ""}></controlz-view-menu>`;
+        ${config.show_nav_menu ? "show-nav" : ""} ${config.editable && hass?.user?.is_admin ? "editable" : ""}></controlz-view-menu>`;
+
+const EYE = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 110-10 5 5 0 010 10zm0-8a3 3 0 100 6 3 3 0 000-6z"/></svg>`;
+const EYE_OFF = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 7a5 5 0 015 5c0 .65-.13 1.26-.36 1.83l2.92 2.92A11.82 11.82 0 0023 12c-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16A4.85 4.85 0 0112 7zM2 4.27l2.28 2.28.46.46A11.8 11.8 0 001 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55A2.82 2.82 0 009 12a3 3 0 003 3c.22 0 .44-.03.65-.08l1.55 1.55A4.97 4.97 0 017 12c0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16a3 3 0 00-3-3l-.17.01z"/></svg>`;
+
+/** Edit-mode wrapper: the tile plus a show / hide button that keeps its on-screen size at any scale. */
+function hideWrap(el, kind, id, name, hidden) {
+  const wrap = document.createElement("div");
+  wrap.className = `tile-wrap${hidden ? " is-hidden" : ""}`;
+  wrap.append(el);
+  wrap.insertAdjacentHTML("beforeend", `<button type="button" class="hide-toggle" data-hide-kind="${kind}"
+    data-hide-id="${escapeHtml(id)}" data-hide="${hidden ? "0" : "1"}" aria-pressed="${hidden}"
+    title="${hidden ? "Show" : "Hide"} ${escapeHtml(name)}" aria-label="${hidden ? "Show" : "Hide"} ${escapeHtml(name)}">${hidden ? EYE_OFF : EYE}</button>`);
+  return wrap;
+}
 
 /**
- * Shared shell for page-level cards: rebuilds child tiles only when the set of entities or the
- * tile size changes, otherwise just forwards `hass` (children diff their own render).
+ * Shared shell for page-level cards: rebuilds child tiles only when the set of entities, the
+ * tile size, the hidden lists or edit mode change; otherwise just forwards `hass`.
  */
 class CzPage extends HTMLElement {
   constructor() {
@@ -31,19 +55,32 @@ class CzPage extends HTMLElement {
     this._key = null;
     this._onPrefs = () => {
       if (!this._config) return;
+      if (effectiveSize(this._config.tile_size) === this._size) {
+        this._applyScale();
+        return;
+      }
+      this._key = null;
+      this._sync();
+    };
+    this._onStructure = () => {
       this._key = null;
       this._sync();
     };
     this._resize = new ResizeObserver(() => this._applyScale());
+    this.shadowRoot.addEventListener("click", (ev) => this._onEditClick(ev));
   }
 
   connectedCallback() {
     window.addEventListener(PREFS_EVENT, this._onPrefs);
+    window.addEventListener(HIDDEN_EVENT, this._onStructure);
+    window.addEventListener(EDIT_EVENT, this._onStructure);
     this._resize.observe(this);
   }
 
   disconnectedCallback() {
     window.removeEventListener(PREFS_EVENT, this._onPrefs);
+    window.removeEventListener(HIDDEN_EVENT, this._onStructure);
+    window.removeEventListener(EDIT_EVENT, this._onStructure);
     this._resize.disconnect();
   }
 
@@ -87,16 +124,27 @@ class CzPage extends HTMLElement {
     return { columns: "full", rows: "auto" };
   }
 
+  get editing() {
+    return isEditing() && !!this._config?.editable;
+  }
+
+  get hidden() {
+    return hiddenLists(this._config);
+  }
+
   _sync() {
     if (!this._hass || !this._config) return;
     this._size = effectiveSize(this._config.tile_size);
     this.setAttribute("size", this._size);
-    const key = `${this._size}|${this.structureKey()}`;
+    const { areas, entities } = this.hidden;
+    const key = `${this._size}|${this.editing}|${[...areas]}|${[...entities]}|${this.structureKey()}`;
     if (key !== this._key) {
       this._key = key;
       this._children = [];
-      this.shadowRoot.innerHTML = `<style>${GRID_STYLES}${SHEET_STYLES}${this.styles()}</style><div class="page"></div>`;
-      this.build(this.shadowRoot.querySelector(".page"));
+      this.shadowRoot.innerHTML = `<style>${GRID_STYLES}${this.styles()}</style><div class="page"></div>`;
+      const page = this.shadowRoot.querySelector(".page");
+      this.build(page);
+      if (this.editing) this._editBanner(page);
     }
     this._applyScale();
     this.update();
@@ -105,13 +153,46 @@ class CzPage extends HTMLElement {
 
   /** Header row: `left` markup grows; the View menu sits on the right. */
   header(page, left) {
-    const menu = viewMenuHtml(this._config);
+    const menu = viewMenuHtml(this._config, this._hass);
     if (!left && !menu) return;
     page.insertAdjacentHTML("beforeend", `<div class="page-head">${left || "<span></span>"}${menu}</div>`);
   }
 
+  _editBanner(page) {
+    const head = page.querySelector(".page-head");
+    const html = `<div class="edit-banner" role="status">
+      <span>Hide rooms &amp; devices — tap <span class="eye-inline">${EYE}</span> to hide or show. Hidden items are dimmed here and hidden everywhere else, on every device.</span>
+      <span class="edit-error" hidden></span>
+      <button type="button" class="btn" data-edit-done>Done</button>
+    </div>`;
+    if (head) head.insertAdjacentHTML("afterend", html);
+    else page.insertAdjacentHTML("afterbegin", html);
+  }
+
+  async _onEditClick(ev) {
+    const target = ev.composedPath().find((el) => el instanceof HTMLElement && (el.dataset?.hideKind || el.hasAttribute?.("data-edit-done")));
+    if (!target) return;
+    ev.stopPropagation();
+    if (target.hasAttribute("data-edit-done")) {
+      setEditing(false);
+      if (hiddenAreasChangedThisSession() && effectiveNav(this._config.room_nav) === "tabs") location.reload();
+      return;
+    }
+    target.disabled = true;
+    try {
+      await setHidden(this._hass, target.dataset.hideKind, target.dataset.hideId, target.dataset.hide === "1");
+    } catch (err) {
+      target.disabled = false;
+      const error = this.shadowRoot.querySelector(".edit-error");
+      if (error) {
+        error.hidden = false;
+        error.textContent = err?.message || "Could not save the dashboard.";
+      }
+    }
+  }
+
   tile(kind, config) {
-    const el = createTile(kind, { tile_size: this._size, ...config });
+    const el = createTile(kind, { tile_size: this._size, ...hiddenOptions(this._config), ...config });
     this._children.push(el);
     return el;
   }
@@ -146,17 +227,21 @@ export class RoomGrid extends CzPage {
 
   build(page) {
     const { area, show_title, show_room_tile } = this._config;
-    const items = areaItems(this._hass, area);
+    const hiddenEntities = this.hidden.entities;
+    const editing = this.editing;
+    const all = areaItems(this._hass, area);
+    const items = editing ? all : all.filter((i) => !hiddenEntities.has(i.entity_id));
     const name = this._config.title || this._hass.areas?.[area]?.name || area;
     const { icon } = resolveAreaIcon(this._hass, area, this._config);
     this.header(page, show_title
       ? `<h1 class="page-title"><span class="title-icon">${roomIconSvg(icon)}</span>${escapeHtml(name)}</h1>`
       : "");
     if (!items.length) {
-      page.insertAdjacentHTML("beforeend", `<div class="empty">No supported devices in this area.</div>`);
+      page.insertAdjacentHTML("beforeend", `<div class="empty">${all.length ? "Every device in this room is hidden." : "No supported devices in this area."}</div>`);
       return;
     }
-    if (show_room_tile && items.some((i) => ["light", "cover"].includes(i.kind))) {
+    const visible = items.filter((i) => !hiddenEntities.has(i.entity_id));
+    if (show_room_tile && visible.some((i) => ["light", "cover"].includes(i.kind))) {
       const master = document.createElement("div");
       master.className = "master";
       master.append(this.tile("room", { area, ...iconOptions(this._config) }));
@@ -164,7 +249,7 @@ export class RoomGrid extends CzPage {
     }
     for (const section of groupBySection(items)) {
       const el = document.createElement("section");
-      if (section.id === "scenes" && this._config.scenes_style !== "tiles") {
+      if (section.id === "scenes" && this._config.scenes_style !== "tiles" && !editing) {
         el.innerHTML = `<h2>${section.title}</h2>`;
         const strip = document.createElement("controlz-scene-strip");
         strip.setConfig({ tile_size: this._size, area_name: name, entities: section.items.map((i) => i.entity_id) });
@@ -175,7 +260,15 @@ export class RoomGrid extends CzPage {
       }
       el.innerHTML = `<h2>${section.title}</h2><div class="grid"></div>`;
       const grid = el.querySelector(".grid");
-      for (const item of section.items) grid.append(this.tile(item.kind, { entity: item.entity_id }));
+      for (const item of section.items) {
+        const tile = this.tile(item.kind, { entity: item.entity_id });
+        if (!editing) {
+          grid.append(tile);
+          continue;
+        }
+        const label = this._hass.states[item.entity_id]?.attributes?.friendly_name || item.entity_id;
+        grid.append(hideWrap(tile, "entity", item.entity_id, label, hiddenEntities.has(item.entity_id)));
+      }
       page.append(el);
     }
   }
@@ -198,7 +291,9 @@ export class HomeGrid extends CzPage {
 
   constructor() {
     super();
-    this.shadowRoot.addEventListener("click", (ev) => this._onClick(ev));
+    this.shadowRoot.addEventListener("click", (ev) => {
+      if (ev.composedPath().some((el) => el instanceof HTMLElement && el.hasAttribute("data-banner"))) this._openSecurity();
+    });
   }
 
   normalizeConfig(config) {
@@ -209,20 +304,16 @@ export class HomeGrid extends CzPage {
     return `
       .sec-group { display: flex; flex-direction: column; gap: 6px; }
       .sec-group h4 { margin: 0; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--cz-text-secondary); }
-      .sec-row {
-        display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
-        padding: 8px 10px; border-radius: 10px; border: 1px solid var(--cz-border);
-        background: var(--cz-bg-secondary); color: var(--cz-text); font: inherit; cursor: pointer;
-      }
-      .sec-row .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-      .sec-row .what { margin-left: auto; font-size: 0.8rem; color: var(--cz-text-secondary); }
-      .sec-empty { color: var(--cz-text-secondary); font-size: 0.9rem; margin: 0; }
-      .sec-scope { font-size: 0.75rem; color: var(--cz-text-secondary); margin: 0; }
+      .sec-empty, .sec-scope { margin: 0; }
     `;
   }
 
+  /** Areas with lights or coverings; hidden ones only while editing. */
   _areas() {
-    return sortedAreas(this._hass, { order: this._config.areas_order, hide: this._config.hide_areas })
+    const hiddenAreas = this.hidden.areas;
+    const editing = this.editing;
+    return sortedAreas(this._hass, { order: this._config.areas_order })
+      .filter((a) => editing || !hiddenAreas.has(a.area_id))
       .filter((a) => areaItems(this._hass, a.area_id).some((i) => i.kind === "light" || i.kind === "cover"));
   }
 
@@ -243,12 +334,12 @@ export class HomeGrid extends CzPage {
       : "";
     this.header(page, banner || title);
     if (banner && title) page.insertAdjacentHTML("afterbegin", title);
-    page.insertAdjacentHTML("beforeend", `<div class="sheet-host"></div>`);
     const areas = this._areas();
     if (!areas.length) {
       page.insertAdjacentHTML("beforeend", `<div class="empty">No areas with lights or window coverings yet. Assign devices to areas in Home Assistant.</div>`);
       return;
     }
+    const hiddenAreas = this.hidden.areas;
     const base = location.pathname.split("/").slice(0, 2).join("/");
     const grid = document.createElement("div");
     grid.className = "grid";
@@ -256,7 +347,8 @@ export class HomeGrid extends CzPage {
       const config = { area: a.area_id, ...iconOptions({ ...this._config, icon: undefined }) };
       if (this._config.select_rooms) config.select_area = true;
       else if (this._config.navigation) config.navigation_path = `${base}/${this._config.view_path_prefix}${a.area_id}`;
-      grid.append(this.tile("room", config));
+      const tile = this.tile("room", config);
+      grid.append(this.editing ? hideWrap(tile, "area", a.area_id, a.name, hiddenAreas.has(a.area_id)) : tile);
     }
     page.append(grid);
   }
@@ -268,20 +360,21 @@ export class HomeGrid extends CzPage {
     banner.className = `banner ${report.level}`;
     const label = banner.querySelector(".banner-text");
     if (label.textContent !== report.text) label.textContent = report.text;
-    if (this._sheetOpen) this._renderSheet(report);
+    if (this._sheet?.isConnected) this._sheet.refresh();
   }
 
-  _renderSheet(report) {
-    const host = this.shadowRoot.querySelector(".sheet-host");
-    if (!host) return;
-    if (!this._sheetOpen) {
-      host.innerHTML = "";
-      return;
-    }
+  // Owner interface for the shared <controlz-sheet> (security list).
+  _openSecurity() {
+    this._sheet ||= document.createElement("controlz-sheet");
+    this._sheet.show(this);
+  }
+
+  sheetBody() {
+    const report = this._report();
     const groups = SECURITY_GROUPS.filter((g) => report[g.key].length).map((g) => `
-      <div class="sec-group">
-        <h4>${g.title} (${report[g.key].length})</h4>
-        ${report[g.key].map((i) => `<button type="button" class="sec-row" data-entity="${escapeHtml(i.entity_id)}">
+      <div class="sheet-section">
+        <div class="section-label">${g.title} (${report[g.key].length})</div>
+        ${report[g.key].map((i) => `<button type="button" class="sec-row" data-action="sec-row" data-entity="${escapeHtml(i.entity_id)}">
           <span class="dot" style="background:${g.dot}"></span><span>${escapeHtml(i.name)}</span>
           <span class="what">${escapeHtml(i.phrase || "motion")}</span></button>`).join("")}
       </div>`).join("");
@@ -289,35 +382,27 @@ export class HomeGrid extends CzPage {
       ? `Only the ${this._config.security_include.length} devices in security_include count.`
       : "All doors, locks, windows, garage doors, alarms and smoke / gas / CO / leak sensors in Home Assistant count"
         + (this._config.security_exclude?.length ? `, except ${this._config.security_exclude.length} excluded.` : ".");
-    const html = `<div class="sheet-backdrop" data-sheet-close>
-      <div class="sheet" role="dialog" aria-label="Security">
-        <h3>Security</h3>
-        ${groups || `<p class="sec-empty">All doors and locks secure. No motion.</p>`}
-        <p class="sec-scope">${scoped}</p>
-        <button type="button" class="btn close" data-sheet-close>Done</button>
-      </div>
-    </div>`;
-    if (host.innerHTML !== html) host.innerHTML = html;
+    return sheetFrame({
+      title: "Security",
+      subtitle: report.text,
+      body: `${groups || `<p class="sec-empty">All doors and locks secure. No motion.</p>`}<p class="sec-scope">${scoped}</p>`,
+    });
   }
 
-  _onClick(ev) {
-    const path = ev.composedPath();
-    const hit = (pred) => path.find((el) => el instanceof HTMLElement && pred(el));
-    if (hit((el) => el.hasAttribute("data-banner"))) {
-      this._sheetOpen = true;
-      this._renderSheet(this._report());
-      return;
-    }
-    const row = hit((el) => el.classList.contains("sec-row"));
-    if (row) {
-      fireEvent(this, "hass-more-info", { entityId: row.dataset.entity });
-      return;
-    }
-    const close = hit((el) => el.hasAttribute("data-sheet-close"));
-    const inside = hit((el) => el.classList.contains("sheet"));
-    if (close && (!inside || close !== hit((el) => el.classList.contains("sheet-backdrop")))) {
-      this._sheetOpen = false;
-      this._renderSheet(this._report());
-    }
+  get actions() {
+    return {
+      "sec-row": (row) => {
+        this._sheet?.close();
+        this.moreInfo(row.dataset.entity);
+      },
+    };
+  }
+
+  moreInfo(entityId) {
+    fireEvent(this, "hass-more-info", { entityId });
+  }
+
+  sheetDetailsEntity() {
+    return null;
   }
 }

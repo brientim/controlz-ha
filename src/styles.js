@@ -280,6 +280,15 @@ export const SHEET_STYLES = `
     font: inherit; font-size: 0.75rem; font-weight: 700; cursor: pointer; color: #1f2937;
   }
   .sheet .close { align-self: flex-end; }
+  .sec-row {
+    display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+    padding: 8px 10px; border-radius: 10px; border: 1px solid var(--cz-border);
+    background: var(--cz-bg-secondary); color: var(--cz-text); font: inherit; cursor: pointer;
+  }
+  .sec-row .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .sec-row .what { margin-left: auto; font-size: 0.8rem; color: var(--cz-text-secondary); }
+  .sec-empty { color: var(--cz-text-secondary); font-size: 0.9rem; }
+  .sec-scope { font-size: 0.75rem; color: var(--cz-text-secondary); }
 `;
 
 export const GRID_STYLES = `
@@ -288,7 +297,7 @@ export const GRID_STYLES = `
   /* Tile scale: everything below the header zooms together (same look, controls still fit).
      --cz-inner is the measured content width in px, widened by 1 / scale so the zoomed
      content still spans the page (percentages are not used: browsers resolve them differently under zoom). */
-  .page.scaled > :not(.page-head):not(.sheet-host) {
+  .page.scaled > :not(.page-head):not(.sheet-host):not(.edit-banner) {
     zoom: var(--cz-scale);
     width: calc(var(--cz-inner) / var(--cz-scale));
   }
@@ -327,4 +336,29 @@ export const GRID_STYLES = `
     border-radius: 8px; cursor: pointer;
   }
   .empty { color: var(--cz-text-secondary); padding: 24px; text-align: center; }
+
+  /* Hide rooms & devices edit mode. Buttons keep their on-screen size at any tile scale. */
+  .edit-banner {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+    padding: 10px 14px; border-radius: 12px; background: rgba(79,70,229,0.12);
+    border: 1px solid rgba(79,70,229,0.35); color: var(--cz-text); font-size: 0.9rem;
+  }
+  .edit-banner > span:first-child { flex: 1; min-width: 200px; }
+  .edit-error { color: #b91c1c; font-weight: 600; }
+  .eye-inline svg { width: 16px; height: 16px; vertical-align: -3px; }
+  .tile-wrap { position: relative; min-width: 0; }
+  .grid:has(.tile-wrap) { padding: 10px 10px 0 0; }
+  .tile-wrap > :first-child { pointer-events: none; }
+  .tile-wrap.is-hidden > :first-child { opacity: 0.35; filter: grayscale(0.7); }
+  .hide-toggle {
+    position: absolute; z-index: 2;
+    top: calc(-10px / var(--cz-scale, 1)); right: calc(-10px / var(--cz-scale, 1));
+    width: calc(34px / var(--cz-scale, 1)); height: calc(34px / var(--cz-scale, 1));
+    border-radius: 50%; border: 2px solid #fff; background: rgba(17,24,39,0.88); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  }
+  .hide-toggle svg { width: 60%; height: 60%; }
+  .hide-toggle[aria-pressed="true"] { background: #6b7280; }
+  .hide-toggle:disabled { opacity: 0.5; cursor: wait; }
 `;

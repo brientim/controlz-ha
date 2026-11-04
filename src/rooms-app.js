@@ -1,12 +1,15 @@
-import { areaItems } from "./area-cache.js";
+import { areaItems, visibleItems } from "./area-cache.js";
 import { escapeHtml } from "./base.js";
-import { iconOptions, viewMenuHtml } from "./grids.js";
+import { hiddenOptions, iconOptions, viewMenuHtml } from "./grids.js";
+import { EDIT_EVENT, HIDDEN_EVENT, hiddenLists, isEditing, setHidden } from "./hidden.js";
 import { ICONS } from "./icons.js";
 import { roomSummary, securityReport, sortedAreas } from "./model.js";
 import { DEFAULT_ROOM_ICON, resolveAreaIcon, roomIconSvg } from "./room-icons.js";
 import { TOKENS } from "./styles.js";
 
 const ALL = "__all";
+const EYE = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 110-10 5 5 0 010 10zm0-8a3 3 0 100 6 3 3 0 000-6z"/></svg>`;
+const EYE_OFF = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2 4.27L3.27 3 21 20.73 19.73 22l-3.08-3.08A11.6 11.6 0 0112 19.5c-5 0-9.27-3.11-11-7.5a11.9 11.9 0 014.35-5.39L2 4.27zM12 7a5 5 0 015 5c0 .65-.13 1.26-.36 1.83l2.92 2.92A11.82 11.82 0 0023 12c-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16A4.85 4.85 0 0112 7z"/></svg>`;
 const NARROW_PX = 700;
 
 const STYLES = `
@@ -44,6 +47,16 @@ const STYLES = `
   .chip.green { background: #22c55e; } .chip.orange { background: #f97316; } .chip.blue { background: #3b82f6; }
   .chip.sec-insecure { background: #dc2626; } .chip.sec-warning { background: #ea580c; } .chip.sec-motion { background: #ca8a04; }
   .content { min-width: 0; }
+  .ri-row { display: flex; align-items: center; gap: 4px; }
+  .ri-row .room-item { flex: 1; min-width: 0; }
+  .ri-row.is-hidden .room-item { opacity: 0.4; }
+  .ri-eye {
+    width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; border: none; cursor: pointer;
+    background: rgba(17,24,39,0.88); color: #fff; display: inline-flex; align-items: center; justify-content: center;
+  }
+  .ri-row.is-hidden .ri-eye { background: #6b7280; }
+  .ri-eye svg { width: 17px; height: 17px; }
+  :host([narrow]) .ri-row { flex-direction: column; }
 
   /* Narrow: ControlZ iPhone room strip across the top. */
   :host([narrow]) .app { grid-template-columns: minmax(0, 1fr); }
@@ -81,10 +94,25 @@ export class RoomsApp extends HTMLElement {
     this._sideSig = null;
     this._page = null;
     this._pageKey = null;
-    this.shadowRoot.addEventListener("click", (ev) => {
+    this.shadowRoot.addEventListener("click", async (ev) => {
+      const eye = ev.target.closest?.(".ri-eye");
+      if (eye) {
+        eye.disabled = true;
+        try {
+          await setHidden(this._hass, "area", eye.dataset.area, eye.dataset.hide === "1");
+        } catch (err) {
+          eye.disabled = false;
+          eye.title = err?.message || "Could not save the dashboard.";
+        }
+        return;
+      }
       const item = ev.target.closest?.(".room-item");
       if (item) this._select(item.dataset.area === ALL ? null : item.dataset.area);
     });
+    this._onStructure = () => {
+      this._structure = null;
+      this._sync();
+    };
     this.shadowRoot.addEventListener("controlz-select-area", (ev) => {
       ev.stopPropagation();
       this._select(ev.detail.area);
@@ -105,12 +133,16 @@ export class RoomsApp extends HTMLElement {
   connectedCallback() {
     window.addEventListener("popstate", this._onPop);
     window.addEventListener("hashchange", this._onPop);
+    window.addEventListener(HIDDEN_EVENT, this._onStructure);
+    window.addEventListener(EDIT_EVENT, this._onStructure);
     this._resize.observe(this);
   }
 
   disconnectedCallback() {
     window.removeEventListener("popstate", this._onPop);
     window.removeEventListener("hashchange", this._onPop);
+    window.removeEventListener(HIDDEN_EVENT, this._onStructure);
+    window.removeEventListener(EDIT_EVENT, this._onStructure);
     this._resize.disconnect();
   }
 
@@ -137,8 +169,15 @@ export class RoomsApp extends HTMLElement {
     return { columns: "full", rows: "auto" };
   }
 
+  get _editing() {
+    return isEditing() && !!this._config.editable;
+  }
+
+  /** Rooms with devices; hidden rooms only while editing. */
   _areas() {
-    return sortedAreas(this._hass, { order: this._config.areas_order, hide: this._config.hide_areas })
+    const hidden = hiddenLists(this._config).areas;
+    return sortedAreas(this._hass, { order: this._config.areas_order })
+      .filter((a) => this._editing || !hidden.has(a.area_id))
       .filter((a) => areaItems(this._hass, a.area_id).length > 0);
   }
 
@@ -155,7 +194,7 @@ export class RoomsApp extends HTMLElement {
     if (!this._hass || !this._config) return;
     const areas = this._areas();
     if (this._selected && !areas.some((a) => a.area_id === this._selected)) this._selected = null;
-    const structure = areas.map((a) => `${a.area_id}:${a.name}`).join(",");
+    const structure = `${this._editing}|${areas.map((a) => `${a.area_id}:${a.name}`).join(",")}`;
     if (structure !== this._structure) {
       this._structure = structure;
       this._sideSig = null;
@@ -163,7 +202,7 @@ export class RoomsApp extends HTMLElement {
       this.shadowRoot.innerHTML = `<style>${STYLES}</style>
         <div class="app">
           <nav class="sidebar" aria-label="Rooms">
-            <div class="side-head"><span class="brand">${escapeHtml(this._config.title || "ControlZ")}</span>${viewMenuHtml(this._config)}</div>
+            <div class="side-head"><span class="brand">${escapeHtml(this._config.title || "ControlZ")}</span>${viewMenuHtml(this._config, this._hass)}</div>
             <div class="rooms" role="list"></div>
           </nav>
           <main class="content"></main>
@@ -191,22 +230,29 @@ export class RoomsApp extends HTMLElement {
       on: false,
       chips: report.level === "secure" ? "" : `<span class="chip sec-${report.level}" title="${escapeHtml(report.text)}">${ICONS.shield}${secCount}</span>`,
     }];
+    const hiddenAreas = hiddenLists(this._config).areas;
     for (const a of areas) {
-      const s = roomSummary(this._hass, areaItems(this._hass, a.area_id));
+      const s = roomSummary(this._hass, visibleItems(this._hass, a.area_id, this._config));
       const { icon } = resolveAreaIcon(this._hass, a.area_id, iconOptions(this._config), { coverOnly: !s.lights.length && !!s.covers.length });
-      rows.push({ id: a.area_id, name: a.name, icon: roomIconSvg(icon), on: s.lightsOn > 0, chips: this._chips(s) });
+      rows.push({ id: a.area_id, name: a.name, icon: roomIconSvg(icon), on: s.lightsOn > 0, chips: this._chips(s), hidden: hiddenAreas.has(a.area_id) });
     }
     const selected = this._selected || ALL;
-    const sig = JSON.stringify([selected, rows]);
+    const editing = this._editing;
+    const sig = JSON.stringify([selected, editing, rows]);
     if (sig === this._sideSig) return;
     this._sideSig = sig;
+    const eye = (r) => editing && r.id !== ALL
+      ? `<button type="button" class="ri-eye" data-area="${escapeHtml(r.id)}" data-hide="${r.hidden ? "0" : "1"}"
+          aria-pressed="${!!r.hidden}" aria-label="${r.hidden ? "Show" : "Hide"} ${escapeHtml(r.name)}"
+          title="${r.hidden ? "Show" : "Hide"} ${escapeHtml(r.name)}">${r.hidden ? EYE_OFF : EYE}</button>`
+      : "";
     this.shadowRoot.querySelector(".rooms").innerHTML = rows.map((r) => `
-      <div role="listitem"><button type="button" class="room-item${r.on ? " on" : ""}" data-area="${escapeHtml(r.id)}"
+      <div role="listitem" class="ri-row${r.hidden ? " is-hidden" : ""}"><button type="button" class="room-item${r.on ? " on" : ""}" data-area="${escapeHtml(r.id)}"
         ${r.id === selected ? 'aria-current="page"' : ""} title="${escapeHtml(r.name)}">
         <span class="ri-icon" aria-hidden="true">${r.icon}</span>
         <span class="ri-name">${escapeHtml(r.name)}</span>
         <span class="ri-chips">${r.chips}</span>
-      </button></div>`).join("");
+      </button>${eye(r)}</div>`).join("");
     this.shadowRoot.querySelector('.room-item[aria-current="page"]')?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }
 
@@ -217,6 +263,9 @@ export class RoomsApp extends HTMLElement {
       const shared = {
         tile_size: this._config.tile_size,
         tile_scale: this._config.tile_scale,
+        editable: this._config.editable,
+        room_nav: this._config.room_nav,
+        ...hiddenOptions(this._config),
         show_menu: false,
         ...iconOptions(this._config),
       };

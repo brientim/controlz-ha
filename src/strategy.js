@@ -12,7 +12,8 @@ import { resolveAreaIcon } from "./room-icons.js";
  *     tile_size: large          # large | thin | compact (default; each device can override from the View menu)
  *     tile_scale: 1             # 0.4–1.5; 0.6 shrinks every page ~40% so more tiles fit (View menu: 100/80/60%)
  *     areas_order: [office]     # optional, pinned first
- *     hide_areas: [garage]      # optional
+ *     hide_areas: [garage]      # optional: rooms left out (View → Hide rooms & devices edits this)
+ *     hide_entities: []         # optional: devices left out of tiles and room controls
  *     security_include: []      # optional: only these entities can raise the security banner
  *     security_exclude: []      # optional: entities that never raise the security banner
  *     view_icons: false         # tabs only: room icons in tabs (HA then hides tab titles)
@@ -35,6 +36,9 @@ export class ControlZRoomsStrategy extends HTMLElement {
       ...(config.tile_scale != null ? { tile_scale: config.tile_scale } : {}),
       room_nav: config.room_nav || "tabs",
       show_nav_menu: true,
+      editable: true,
+      ...(config.hide_areas ? { hide_areas: config.hide_areas } : {}),
+      ...(config.hide_entities ? { hide_entities: config.hide_entities } : {}),
       ...(config.room_icons ? { room_icons: config.room_icons } : {}),
       ...(config.icon_source ? { icon_source: config.icon_source } : {}),
     };

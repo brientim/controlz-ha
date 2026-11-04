@@ -51,6 +51,7 @@
 
     window.confirm = () => true;
     if (new URLSearchParams(location.search).has("fit")) localStorage.removeItem("controlz-ha.prefs");
+    if (new URLSearchParams(location.search).has("fresh")) sessionStorage.removeItem("controlz-harness-dashboard");
     const log = document.getElementById("log");
     const print = (msg) => { log.textContent = `${msg}\n${log.textContent}`.slice(0, 4000); };
 
@@ -97,7 +98,11 @@
     }
 
     async function regenerate() {
-      dashboard = await Strategy.generate({ type: "custom:controlz-rooms", tile_size: sizeSelect.value, icons_view: true, room_nav: params.get("nav") || "tabs", tile_scale: Number(params.get("scale") || 1) }, mock.hass);
+      const saved = JSON.parse(sessionStorage.getItem("controlz-harness-dashboard") || "{}").strategy || {};
+      dashboard = await Strategy.generate({
+        type: "custom:controlz-rooms", icons_view: true, ...saved,
+        tile_size: sizeSelect.value, room_nav: params.get("nav") || "tabs", tile_scale: Number(params.get("scale") || 1),
+      }, mock.hass);
       renderView();
     }
 
@@ -182,6 +187,18 @@
         await new Promise((r) => setTimeout(r, 50));
         if (open === "menu") deepFind("controlz-view-menu").shadowRoot.querySelector("[data-toggle]").click();
         if (open === "security") deepFind("[data-banner]").click();
+        if (open === "edit") {
+          deepFind("controlz-view-menu").shadowRoot.querySelector("[data-toggle]").click();
+          await new Promise((r) => setTimeout(r, 30));
+          deepFind("controlz-view-menu").shadowRoot.querySelector("[data-edit]").click();
+          await new Promise((r) => setTimeout(r, 50));
+          if (params.get("hide")) {
+            for (const id of params.get("hide").split(",")) {
+              deepFind(`.hide-toggle[data-hide-id="${id}"], .ri-eye[data-area="${id}"]`)?.click();
+              await new Promise((r) => setTimeout(r, 60));
+            }
+          }
+        }
         if (open === "light-sheet") deepFind("controlz-light-tile .color-btn, .color-btn[data-action=color]").click();
         if (open === "room-sheet") deepFind("[data-action=sheet-open]").click();
         if (open.endsWith("-sheet")) {
