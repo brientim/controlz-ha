@@ -20,6 +20,8 @@ Usage:
   python3 scripts/deploy.py --cards-only        # upload + resource, leave dashboards alone
   python3 scripts/deploy.py --status
   python3 scripts/deploy.py --remove-local      # after installing through HACS: drop the /local copy
+  python3 scripts/deploy.py --marketplace       # HA 2026.11+: install/update from the Marketplace,
+                                                # then drop the /local copy and ensure the dashboard
 
 When ControlZ HA is installed through HACS (/hacsfiles/controlz-ha/) or the Home Assistant 2026.11+
 Marketplace (/local/community/controlz-ha/), the /local resource is not registered, so only one
@@ -35,6 +37,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -49,6 +52,7 @@ REPO = Path(__file__).resolve().parent.parent
 DIST = REPO / "dist" / "controlz-ha.js"
 BACKUPS = REPO / "backups"
 REMOTE_NAME = "controlz-ha.js"
+GITHUB_REPOSITORY = "brientim/controlz-ha"
 RESOURCE_PATH = f"/local/{REMOTE_NAME}"
 # HACS (Home Assistant ≤ 2026.10) and the built-in Marketplace (2026.11+, which replaced HACS).
 STORE_RESOURCE_PREFIXES = ("/hacsfiles/controlz-ha/", "/local/community/controlz-ha/")
@@ -181,7 +185,7 @@ def backup_dashboard(config: dict) -> None:
     print(f"dashboard: backup → {out.relative_to(REPO)}")
 
 
-def ensure_dashboard(ws: HAWebSocket, tile_size: str, force: bool) -> None:
+def ensure_dashboard(ws: HAWebSocket, tile_size: str | None, force: bool) -> None:
     dashboards = ws.ok("lovelace/dashboards/list") or []
     if not any(d.get("url_path") == DASHBOARD_PATH for d in dashboards):
         ws.ok(
@@ -205,9 +209,65 @@ def ensure_dashboard(ws: HAWebSocket, tile_size: str, force: bool) -> None:
             return
         backup_dashboard(current_config)
 
-    strategy = {**(current_config or {}).get("strategy", {}), "type": STRATEGY_TYPE, "tile_size": tile_size}
+    existing = (current_config or {}).get("strategy", {})
+    strategy = {**existing, "type": STRATEGY_TYPE, "tile_size": tile_size or existing.get("tile_size", "large")}
+    if strategy == existing:
+        print(f"dashboard: /{DASHBOARD_PATH} unchanged {json.dumps(strategy)}")
+        return
     ws.ok("lovelace/config/save", url_path=DASHBOARD_PATH, config={"strategy": strategy})
     print(f"dashboard: /{DASHBOARD_PATH} → strategy {json.dumps(strategy)}")
+
+
+def find_repository(ws: HAWebSocket) -> dict | None:
+    repos = ws.ok("marketplace/repositories/list") or []
+    return next((r for r in repos if (r.get("full_name") or "").lower() == GITHUB_REPOSITORY), None)
+
+
+def marketplace_install(ws: HAWebSocket, timeout_s: int = 180) -> bool:
+    """Install or update ControlZ HA through the Home Assistant 2026.11+ Marketplace.
+
+    The one-time consent steps (accepting the community-content warning, connecting GitHub)
+    are left to the user in Settings → Marketplace; this never accepts the warning for them.
+    """
+    r = ws.call("marketplace/info")
+    if not r.get("success"):
+        print(f"marketplace: not available ({r.get('error', {}).get('message', r)}) — needs Home Assistant 2026.11+")
+        return False
+    info = r["result"]
+    print(f"marketplace: version {info.get('version')}, stage {info.get('stage')}, "
+          f"warning accepted {info.get('warning_accepted')}, GitHub connected {info.get('github_connected')}")
+    if info.get("disabled_reason"):
+        print(f"marketplace: disabled ({info['disabled_reason']})")
+        return False
+    if not info.get("warning_accepted") or not info.get("github_connected"):
+        print("marketplace: open Settings → Marketplace and accept the warning / connect GitHub first "
+              "(needed once to add a custom repository), then run this again.")
+        return False
+
+    repo = find_repository(ws)
+    if not repo:
+        ws.ok("marketplace/repositories/add", repository=GITHUB_REPOSITORY, category="plugin")
+        print(f"marketplace: added custom repository {GITHUB_REPOSITORY}")
+        repo = find_repository(ws)
+    if not repo:
+        print("marketplace: repository did not appear after adding it")
+        return False
+    print(f"marketplace: {repo['full_name']} installed {repo.get('installed_version') or '-'} "
+          f"available {repo.get('available_version')}")
+    if repo.get("installed") and repo.get("installed_version") == repo.get("available_version"):
+        print("marketplace: already up to date")
+        return True
+
+    ws.ok("marketplace/repository/install", repository=repo["id"])
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        repo = find_repository(ws) or {}
+        if repo.get("installed") and repo.get("installed_version") == repo.get("available_version"):
+            print(f"marketplace: installed {repo['installed_version']} → {repo.get('local_path')}")
+            return True
+        time.sleep(3)
+    print("marketplace: install did not finish in time — check Settings → Marketplace")
+    return False
 
 
 def status(ws: HAWebSocket) -> int:
@@ -238,11 +298,14 @@ def status(ws: HAWebSocket) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Deploy ControlZ HA cards to Home Assistant")
     parser.add_argument("--status", action="store_true", help="show install status only")
-    parser.add_argument("--tile-size", choices=["large", "thin", "compact"], default="large")
+    parser.add_argument("--tile-size", choices=["large", "thin", "compact"], default=None,
+                        help="dashboard default tile size (default: keep the current setting, else large)")
     parser.add_argument("--cards-only", action="store_true", help="upload + resource only; do not touch dashboards")
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--force", action="store_true", help="replace a hand-edited ControlZ dashboard (backed up first)")
     parser.add_argument("--remove-local", action="store_true", help="remove the /local copy (use after installing through HACS / Marketplace)")
+    parser.add_argument("--marketplace", action="store_true",
+                        help="HA 2026.11+: install/update ControlZ HA from the Marketplace, remove the /local copy, ensure the dashboard")
     args = parser.parse_args()
 
     if not HA_TOKEN:
@@ -255,6 +318,12 @@ def main() -> int:
             return status(ws)
         if args.remove_local:
             remove_local(ws)
+            return status(ws)
+        if args.marketplace:
+            if not marketplace_install(ws):
+                return 1
+            remove_local(ws)
+            ensure_dashboard(ws, args.tile_size, args.force)
             return status(ws)
         resources = ws.ok("lovelace/resources") or []
         if not hacs_resource(resources):
