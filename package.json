@@ -1,6 +1,6 @@
 {
   "name": "controlz-ha",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "ControlZ-style Rooms and Tiles for Home Assistant (Lovelace custom cards + dashboard strategy).",
   "license": "MIT",
