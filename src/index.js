@@ -2,9 +2,11 @@ import { HomeGrid, RoomGrid } from "./grids.js";
 import { classifyEntity, KIND } from "./model.js";
 import { RoomCard } from "./room-card.js";
 import { RoomIconsCard } from "./room-icons-card.js";
+import { RoomsApp } from "./rooms-app.js";
 import { SceneStrip } from "./scene-strip.js";
 import { ControlZRoomsStrategy } from "./strategy.js";
 import { createTile } from "./tile-factory.js";
+import { ViewMenu } from "./view-menu.js";
 import { CoverTile } from "./tiles/cover-tile.js";
 import { LightTile } from "./tiles/light-tile.js";
 import { OtherTile } from "./tiles/other-tile.js";
@@ -65,6 +67,8 @@ const ELEMENTS = {
   "controlz-home-grid": HomeGrid,
   "controlz-room-icons-card": RoomIconsCard,
   "controlz-scene-strip": SceneStrip,
+  "controlz-view-menu": ViewMenu,
+  "controlz-rooms-app": RoomsApp,
   "ll-strategy-dashboard-controlz-rooms": ControlZRoomsStrategy,
 };
 
@@ -78,6 +82,7 @@ window.customCards.push(
   { type: "controlz-tile-card", name: "ControlZ Tile", description: "ControlZ device tile (light, cover, sensor, security, scene).", preview: true },
   { type: "controlz-room-grid", name: "ControlZ Room Page", description: "Full ControlZ room: master tile plus sectioned device tiles." },
   { type: "controlz-home-grid", name: "ControlZ All Rooms", description: "Security banner plus a room tile for every area." },
+  { type: "controlz-rooms-app", name: "ControlZ Rooms (sidebar)", description: "Room sidebar with badges plus the selected room — use in a panel view." },
   { type: "controlz-room-icons-card", name: "ControlZ Room Icons", description: "Room icon each area resolves to, plus the searchable ControlZ room icon registry." }
 );
 

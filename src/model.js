@@ -384,18 +384,89 @@ export function securityView(entityId, stateObj) {
   };
 }
 
-/** Home banner: INSECURE beats MOTION beats SECURE (ControlZ security room banner). */
-export function securityBanner(hass) {
-  let insecure = 0;
-  let motion = 0;
+const HAZARD_PHRASES = {
+  smoke: "smoke detected",
+  gas: "gas detected",
+  carbon_monoxide: "CO detected",
+  moisture: "leak detected",
+  safety: "unsafe",
+  tamper: "tampered",
+};
+
+/**
+ * How one security entity affects the banner, mirroring ControlZ `SecurityStateCalculator`:
+ * doors, locks, garage/gate, alarms and hazards are red (`insecure`); open windows and
+ * jammed locks are amber (`warning`). Offline devices never raise the banner.
+ */
+export function bannerSeverity(entityId, stateObj) {
+  if (isUnavailable(stateObj)) return null;
+  const domain = domainOf(entityId);
+  const state = stateObj.state;
+  const dc = stateObj.attributes?.device_class;
+  if (domain === "lock") {
+    if (state === "unlocked" || state === "open") return { severity: "insecure", phrase: state };
+    if (state === "jammed") return { severity: "warning", phrase: "jammed" };
+    return null;
+  }
+  if (domain === "alarm_control_panel")
+    return state === "triggered" ? { severity: "insecure", phrase: "alarm triggered" } : null;
+  if (domain === "cover") return coverIsOpen(stateObj) ? { severity: "insecure", phrase: "open" } : null;
+  if (state !== "on") return null;
+  if (dc === "lock") return { severity: "insecure", phrase: "unlocked" };
+  if (dc in HAZARD_PHRASES) return { severity: "insecure", phrase: HAZARD_PHRASES[dc] };
+  if (dc === "window") return { severity: "warning", phrase: "open" };
+  return { severity: "insecure", phrase: "open" };
+}
+
+const nameList = (items) => {
+  const shown = items.slice(0, 2).map((i) => (i.phrase ? `${i.name} ${i.phrase}` : i.name)).join(", ");
+  return items.length > 2 ? `${shown} +${items.length - 2} more` : shown;
+};
+
+/**
+ * Whole-house security report for the banner. `include` (entity ids) limits the banner to
+ * those devices, like ControlZ's Security membership; `exclude` drops devices. Hidden and
+ * config/diagnostic entities are never counted.
+ */
+export function securityReport(hass, { include = [], exclude = [] } = {}) {
+  const only = new Set(include || []);
+  const skip = new Set(exclude || []);
+  const insecure = [];
+  const warning = [];
+  const motion = [];
   for (const entityId of Object.keys(hass?.entities || {})) {
+    if ((only.size && !only.has(entityId)) || skip.has(entityId)) continue;
     const stateObj = hass.states?.[entityId];
     const kind = classifyEntity(entityId, stateObj, hass.entities[entityId]);
-    if (kind === KIND.SECURITY && securityView(entityId, stateObj).insecure) insecure += 1;
-    if (kind === KIND.MOTION && isOn(stateObj)) motion += 1;
+    const name = friendlyName(hass, entityId);
+    if (kind === KIND.SECURITY) {
+      const hit = bannerSeverity(entityId, stateObj);
+      if (hit) (hit.severity === "insecure" ? insecure : warning).push({ entity_id: entityId, name, phrase: hit.phrase });
+    } else if (kind === KIND.MOTION && isOn(stateObj)) {
+      motion.push({ entity_id: entityId, name, phrase: "" });
+    }
   }
-  if (insecure > 0)
-    return { level: "insecure", text: `INSECURE — ${insecure} open or unlocked. Check doors and locks.` };
-  if (motion > 0) return { level: "motion", text: "MOTION — Activity detected." };
-  return { level: "secure", text: "SECURE — All doors and locks secure. No motion." };
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  insecure.sort(byName);
+  warning.sort(byName);
+  motion.sort(byName);
+  let level = "secure";
+  let text = "SECURE — All doors and locks secure. No motion.";
+  if (insecure.length) {
+    level = "insecure";
+    text = `INSECURE — ${nameList(insecure)}`;
+  } else if (warning.length) {
+    level = "warning";
+    text = `CHECK — ${nameList(warning)}`;
+  } else if (motion.length) {
+    level = "motion";
+    text = `MOTION — ${nameList(motion)}`;
+  }
+  return { level, text, insecure, warning, motion };
+}
+
+/** Home banner summary: INSECURE beats CHECK (warning) beats MOTION beats SECURE. */
+export function securityBanner(hass, options) {
+  const { level, text } = securityReport(hass, options);
+  return { level, text };
 }

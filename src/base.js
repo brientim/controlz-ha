@@ -1,4 +1,6 @@
-export const SIZES = ["large", "thin", "compact"];
+import { PREFS_EVENT, SIZES, effectiveSize } from "./prefs.js";
+
+export { SIZES };
 
 export const escapeHtml = (value) =>
   String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -34,22 +36,32 @@ export class CzElement extends HTMLElement {
       this._dragging = false;
       this.requestRender();
     };
+    this._onPrefs = () => {
+      if (!this._config) return;
+      this._applySize();
+      this.requestRender(true);
+    };
   }
 
   connectedCallback() {
     window.addEventListener("pointerup", this._onPointerUp);
     window.addEventListener("pointercancel", this._onPointerUp);
+    window.addEventListener(PREFS_EVENT, this._onPrefs);
   }
 
   disconnectedCallback() {
     window.removeEventListener("pointerup", this._onPointerUp);
     window.removeEventListener("pointercancel", this._onPointerUp);
+    window.removeEventListener(PREFS_EVENT, this._onPrefs);
+  }
+
+  _applySize() {
+    this.setAttribute("size", effectiveSize(this._config.tile_size));
   }
 
   setConfig(config) {
     this._config = this.normalizeConfig(config || {});
-    const size = SIZES.includes(this._config.tile_size) ? this._config.tile_size : "large";
-    this.setAttribute("size", size);
+    this._applySize();
     this.requestRender(true);
   }
 

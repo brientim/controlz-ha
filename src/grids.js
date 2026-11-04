@@ -1,32 +1,50 @@
 import { areaItems, itemsKey } from "./area-cache.js";
-import { SIZES, escapeHtml } from "./base.js";
-import { groupBySection, securityBanner, sortedAreas } from "./model.js";
+import { escapeHtml, fireEvent } from "./base.js";
+import { groupBySection, securityReport, sortedAreas } from "./model.js";
+import { PREFS_EVENT, effectiveSize } from "./prefs.js";
 import { resolveAreaIcon, roomIconSvg } from "./room-icons.js";
-import { GRID_STYLES } from "./styles.js";
+import { GRID_STYLES, SHEET_STYLES } from "./styles.js";
 import { createTile } from "./tile-factory.js";
 
-/**
- * Shared shell for page-level cards: rebuilds child tiles only when the set of
- * entities changes, otherwise just forwards `hass` (children diff their own render).
- */
-const iconOptions = (config) => ({
+export const iconOptions = (config) => ({
   ...(config.icon ? { icon: config.icon } : {}),
   ...(config.room_icons ? { room_icons: config.room_icons } : {}),
   ...(config.icon_source ? { icon_source: config.icon_source } : {}),
 });
 
+export const viewMenuHtml = (config) =>
+  config.show_menu === false
+    ? ""
+    : `<controlz-view-menu default-size="${escapeHtml(config.tile_size || "large")}"
+        default-nav="${escapeHtml(config.room_nav || "tabs")}" ${config.show_nav_menu ? "show-nav" : ""}></controlz-view-menu>`;
+
+/**
+ * Shared shell for page-level cards: rebuilds child tiles only when the set of entities or the
+ * tile size changes, otherwise just forwards `hass` (children diff their own render).
+ */
 class CzPage extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
     this._children = [];
     this._key = null;
+    this._onPrefs = () => {
+      if (!this._config) return;
+      this._key = null;
+      this._sync();
+    };
+  }
+
+  connectedCallback() {
+    window.addEventListener(PREFS_EVENT, this._onPrefs);
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener(PREFS_EVENT, this._onPrefs);
   }
 
   setConfig(config) {
     this._config = this.normalizeConfig(config || {});
-    this._size = SIZES.includes(this._config.tile_size) ? this._config.tile_size : "large";
-    this.setAttribute("size", this._size);
     this._key = null;
     this._sync();
   }
@@ -54,21 +72,34 @@ class CzPage extends HTMLElement {
 
   _sync() {
     if (!this._hass || !this._config) return;
+    this._size = effectiveSize(this._config.tile_size);
+    this.setAttribute("size", this._size);
     const key = `${this._size}|${this.structureKey()}`;
     if (key !== this._key) {
       this._key = key;
       this._children = [];
-      this.shadowRoot.innerHTML = `<style>${GRID_STYLES}</style><div class="page"></div>`;
+      this.shadowRoot.innerHTML = `<style>${GRID_STYLES}${SHEET_STYLES}${this.styles()}</style><div class="page"></div>`;
       this.build(this.shadowRoot.querySelector(".page"));
     }
     this.update();
     for (const child of this._children) child.hass = this._hass;
   }
 
+  /** Header row: `left` markup grows; the View menu sits on the right. */
+  header(page, left) {
+    const menu = viewMenuHtml(this._config);
+    if (!left && !menu) return;
+    page.insertAdjacentHTML("beforeend", `<div class="page-head">${left || "<span></span>"}${menu}</div>`);
+  }
+
   tile(kind, config) {
     const el = createTile(kind, { tile_size: this._size, ...config });
     this._children.push(el);
     return el;
+  }
+
+  styles() {
+    return "";
   }
 
   structureKey() {
@@ -99,10 +130,10 @@ export class RoomGrid extends CzPage {
     const { area, show_title, show_room_tile } = this._config;
     const items = areaItems(this._hass, area);
     const name = this._config.title || this._hass.areas?.[area]?.name || area;
-    if (show_title) {
-      const { icon } = resolveAreaIcon(this._hass, area, this._config);
-      page.insertAdjacentHTML("beforeend", `<h1 class="page-title"><span class="title-icon">${roomIconSvg(icon)}</span>${escapeHtml(name)}</h1>`);
-    }
+    const { icon } = resolveAreaIcon(this._hass, area, this._config);
+    this.header(page, show_title
+      ? `<h1 class="page-title"><span class="title-icon">${roomIconSvg(icon)}</span>${escapeHtml(name)}</h1>`
+      : "");
     if (!items.length) {
       page.insertAdjacentHTML("beforeend", `<div class="empty">No supported devices in this area.</div>`);
       return;
@@ -132,14 +163,44 @@ export class RoomGrid extends CzPage {
   }
 }
 
-/** All Rooms: security banner + one ControlZ room tile per area; tapping a tile opens that room's view. */
+const SECURITY_GROUPS = [
+  { key: "insecure", title: "Insecure", dot: "#dc2626" },
+  { key: "warning", title: "Check", dot: "#ea580c" },
+  { key: "motion", title: "Motion", dot: "#ca8a04" },
+];
+
+/**
+ * All Rooms: security banner (tap for the device list) + one ControlZ room tile per area.
+ * Tapping a room opens its view, or selects it when hosted by the sidebar app (`select_rooms`).
+ */
 export class HomeGrid extends CzPage {
   static getStubConfig() {
     return {};
   }
 
+  constructor() {
+    super();
+    this.shadowRoot.addEventListener("click", (ev) => this._onClick(ev));
+  }
+
   normalizeConfig(config) {
     return { show_banner: true, navigation: true, view_path_prefix: "room-", ...config };
+  }
+
+  styles() {
+    return `
+      .sec-group { display: flex; flex-direction: column; gap: 6px; }
+      .sec-group h4 { margin: 0; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--cz-text-secondary); }
+      .sec-row {
+        display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+        padding: 8px 10px; border-radius: 10px; border: 1px solid var(--cz-border);
+        background: var(--cz-bg-secondary); color: var(--cz-text); font: inherit; cursor: pointer;
+      }
+      .sec-row .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+      .sec-row .what { margin-left: auto; font-size: 0.8rem; color: var(--cz-text-secondary); }
+      .sec-empty { color: var(--cz-text-secondary); font-size: 0.9rem; margin: 0; }
+      .sec-scope { font-size: 0.75rem; color: var(--cz-text-secondary); margin: 0; }
+    `;
   }
 
   _areas() {
@@ -147,15 +208,24 @@ export class HomeGrid extends CzPage {
       .filter((a) => areaItems(this._hass, a.area_id).some((i) => i.kind === "light" || i.kind === "cover"));
   }
 
+  _report() {
+    return securityReport(this._hass, { include: this._config.security_include, exclude: this._config.security_exclude });
+  }
+
   structureKey() {
     return this._areas().map((a) => `${a.area_id}:${a.name}:${a.icon || ""}`).join(",");
   }
 
   build(page) {
-    if (this._config.title) page.insertAdjacentHTML("beforeend", `<h1 class="page-title">${escapeHtml(this._config.title)}</h1>`);
-    if (this._config.show_banner) {
-      page.insertAdjacentHTML("beforeend", `<div class="banner" role="status"><span aria-hidden="true">🛡</span><span class="banner-text"></span></div>`);
-    }
+    const title = this._config.title ? `<h1 class="page-title">${escapeHtml(this._config.title)}</h1>` : "";
+    const banner = this._config.show_banner
+      ? `<button type="button" class="banner" data-banner aria-haspopup="dialog">
+          <span aria-hidden="true">🛡</span><span class="banner-text"></span><span class="banner-more" aria-hidden="true">›</span>
+        </button>`
+      : "";
+    this.header(page, banner || title);
+    if (banner && title) page.insertAdjacentHTML("afterbegin", title);
+    page.insertAdjacentHTML("beforeend", `<div class="sheet-host"></div>`);
     const areas = this._areas();
     if (!areas.length) {
       page.insertAdjacentHTML("beforeend", `<div class="empty">No areas with lights or window coverings yet. Assign devices to areas in Home Assistant.</div>`);
@@ -166,7 +236,8 @@ export class HomeGrid extends CzPage {
     grid.className = "grid";
     for (const a of areas) {
       const config = { area: a.area_id, ...iconOptions({ ...this._config, icon: undefined }) };
-      if (this._config.navigation) config.navigation_path = `${base}/${this._config.view_path_prefix}${a.area_id}`;
+      if (this._config.select_rooms) config.select_area = true;
+      else if (this._config.navigation) config.navigation_path = `${base}/${this._config.view_path_prefix}${a.area_id}`;
       grid.append(this.tile("room", config));
     }
     page.append(grid);
@@ -175,9 +246,60 @@ export class HomeGrid extends CzPage {
   update() {
     const banner = this.shadowRoot.querySelector(".banner");
     if (!banner) return;
-    const { level, text } = securityBanner(this._hass);
-    banner.className = `banner ${level}`;
+    const report = this._report();
+    banner.className = `banner ${report.level}`;
     const label = banner.querySelector(".banner-text");
-    if (label.textContent !== text) label.textContent = text;
+    if (label.textContent !== report.text) label.textContent = report.text;
+    if (this._sheetOpen) this._renderSheet(report);
+  }
+
+  _renderSheet(report) {
+    const host = this.shadowRoot.querySelector(".sheet-host");
+    if (!host) return;
+    if (!this._sheetOpen) {
+      host.innerHTML = "";
+      return;
+    }
+    const groups = SECURITY_GROUPS.filter((g) => report[g.key].length).map((g) => `
+      <div class="sec-group">
+        <h4>${g.title} (${report[g.key].length})</h4>
+        ${report[g.key].map((i) => `<button type="button" class="sec-row" data-entity="${escapeHtml(i.entity_id)}">
+          <span class="dot" style="background:${g.dot}"></span><span>${escapeHtml(i.name)}</span>
+          <span class="what">${escapeHtml(i.phrase || "motion")}</span></button>`).join("")}
+      </div>`).join("");
+    const scoped = this._config.security_include?.length
+      ? `Only the ${this._config.security_include.length} devices in security_include count.`
+      : "All doors, locks, windows, garage doors, alarms and smoke / gas / CO / leak sensors in Home Assistant count"
+        + (this._config.security_exclude?.length ? `, except ${this._config.security_exclude.length} excluded.` : ".");
+    const html = `<div class="sheet-backdrop" data-sheet-close>
+      <div class="sheet" role="dialog" aria-label="Security">
+        <h3>Security</h3>
+        ${groups || `<p class="sec-empty">All doors and locks secure. No motion.</p>`}
+        <p class="sec-scope">${scoped}</p>
+        <button type="button" class="btn close" data-sheet-close>Done</button>
+      </div>
+    </div>`;
+    if (host.innerHTML !== html) host.innerHTML = html;
+  }
+
+  _onClick(ev) {
+    const path = ev.composedPath();
+    const hit = (pred) => path.find((el) => el instanceof HTMLElement && pred(el));
+    if (hit((el) => el.hasAttribute("data-banner"))) {
+      this._sheetOpen = true;
+      this._renderSheet(this._report());
+      return;
+    }
+    const row = hit((el) => el.classList.contains("sec-row"));
+    if (row) {
+      fireEvent(this, "hass-more-info", { entityId: row.dataset.entity });
+      return;
+    }
+    const close = hit((el) => el.hasAttribute("data-sheet-close"));
+    const inside = hit((el) => el.classList.contains("sheet"));
+    if (close && (!inside || close !== hit((el) => el.classList.contains("sheet-backdrop")))) {
+      this._sheetOpen = false;
+      this._renderSheet(this._report());
+    }
   }
 }

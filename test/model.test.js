@@ -13,7 +13,9 @@ import {
   relativeTime,
   roomSummary,
   sceneLabel,
+  bannerSeverity,
   securityBanner,
+  securityReport,
   securityView,
   siblingSensor,
   sortedAreas,
@@ -133,14 +135,46 @@ test("security views", () => {
   assert.equal(coded.action.moreInfo, true);
 });
 
-test("security banner prefers insecure over motion", () => {
-  assert.equal(securityBanner(hass).level, "insecure");
+test("security banner names devices: red beats amber beats motion beats secure", () => {
+  const report = securityReport(hass);
+  assert.equal(report.level, "insecure");
+  assert.equal(report.text, "INSECURE — Garage Side Lock unlocked");
+  assert.deepEqual(report.warning.map((i) => i.name), ["Office Window"]);
+  assert.deepEqual(report.motion.map((i) => i.name), ["Lounge Motion Sensor"]);
+
   const calm = structuredClone(hass);
-  calm.states["binary_sensor.office_window"].state = "off";
   calm.states["lock.garage_side_lock"].state = "locked";
-  assert.equal(securityBanner(calm).level, "motion");
+  assert.equal(securityBanner(calm).level, "warning");
+  assert.equal(securityBanner(calm).text, "CHECK — Office Window open");
+  calm.states["binary_sensor.office_window"].state = "off";
+  assert.equal(securityBanner(calm).text, "MOTION — Lounge Motion Sensor");
   calm.states["binary_sensor.lounge_motion"].state = "off";
   assert.equal(securityBanner(calm).level, "secure");
+});
+
+test("security banner severity mirrors ControlZ", () => {
+  const sev = (id, state, attributes = {}) => bannerSeverity(id, { state, attributes })?.severity ?? null;
+  assert.equal(sev("lock.a", "unlocked"), "insecure");
+  assert.equal(sev("lock.a", "jammed"), "warning");
+  assert.equal(sev("lock.a", "locked"), null);
+  assert.equal(sev("lock.a", "unavailable"), null);
+  assert.equal(sev("binary_sensor.a", "on", { device_class: "window" }), "warning");
+  assert.equal(sev("binary_sensor.a", "on", { device_class: "door" }), "insecure");
+  assert.equal(sev("binary_sensor.a", "on", { device_class: "smoke" }), "insecure");
+  assert.equal(sev("alarm_control_panel.a", "triggered"), "insecure");
+  assert.equal(sev("cover.a", "open", { device_class: "garage", current_position: 100 }), "insecure");
+});
+
+test("security banner include / exclude scope", () => {
+  assert.equal(securityReport(hass, { exclude: ["lock.garage_side_lock"] }).level, "warning");
+  assert.equal(securityReport(hass, { include: ["lock.front_door", "binary_sensor.front_door"] }).level, "secure");
+  const many = structuredClone(hass);
+  many.states["lock.front_door"].state = "unlocked";
+  many.states["binary_sensor.front_door"].state = "on";
+  assert.equal(
+    securityReport(many).text,
+    "INSECURE — Front Door Lock unlocked, Front Door Sensor open +1 more"
+  );
 });
 
 test("motion sensor finds its sibling temperature sensor on the same device", () => {

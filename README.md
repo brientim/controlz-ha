@@ -23,7 +23,31 @@ strategy:
   type: custom:controlz-rooms
 ```
 
-You get an **All Rooms** view (security banner plus a tile per room) and one view per area. Tapping a room tile opens that room.
+You get an **All Rooms** view (security banner plus a tile per room) and one view per area. Tapping a room tile opens that room. Add `room_nav: sidebar` for the ControlZ room sidebar instead of tabs.
+
+![Sidebar](https://raw.githubusercontent.com/brientim/controlz-ha/main/dev/screenshots/sidebar-office.png)
+
+### Rooms: tabs or sidebar
+
+- **Tabs** (`room_nav: tabs`, default): All Rooms plus one Home Assistant view per area; the view tabs are the room strip.
+- **Sidebar** (`room_nav: sidebar`): a ControlZ-style room sidebar with each room's icon and badge chips (green lights, orange outlets, blue coverings; All Rooms shows the security state). The selected room fills the rest of the screen, and the URL (`#room=office`) keeps back / forward and links working. Below 700 px wide the sidebar becomes a horizontal room strip, like ControlZ on iPhone.
+
+### View menu
+
+Every page has a **View** menu (top right; in the sidebar next to the title) to pick the **tile size** (Large / Thin / Compact) and **Rooms** layout (Tabs / Sidebar). The choice is saved on that device only, so a wall tablet can use Compact + Sidebar while a phone keeps Large + Tabs; **Use dashboard defaults** clears it. Tile size changes immediately; switching Tabs / Sidebar reloads the page.
+
+### Security banner
+
+The banner at the top of All Rooms looks at every Home Assistant device that gets a Security tile, in every area, and names the ones that need attention. Tap it for the full list; tap a device for its details.
+
+| Banner | When |
+|--------|------|
+| **INSECURE** (red) | A lock is unlocked or open, a door / opening / garage door sensor or garage / gate cover is open, an alarm panel is triggered, or a smoke / gas / CO / leak / safety / tamper sensor is on |
+| **CHECK** (amber) | A window sensor is open or a lock is jammed (and nothing is red) |
+| **MOTION** (yellow) | A motion / occupancy / presence sensor is on (and nothing is red or amber) |
+| **SECURE** (green) | None of the above |
+
+Unavailable devices, hidden entities and diagnostic entities never raise the banner. Like ControlZ's Security membership, you can scope it: `security_include` (only these entities count) or `security_exclude` (these never count).
 
 ### Manual install
 
@@ -36,7 +60,8 @@ Download `controlz-ha.js` from the [latest release](https://github.com/brientim/
 | `custom:controlz-rooms` (strategy) | Generates the whole dashboard: All Rooms plus one view per area. The view tabs act as the room strip. |
 | `custom:controlz-room-card` | Room tile for one area. Green chip = lights on (lights only, not switches/outlets), orange = outlets on, blue = coverings open. Rooms with lights and coverings control both. |
 | `custom:controlz-room-grid` | A full room page: room tile, then Scenes, Lights, Window Coverings, Security, Sensors and Other. |
-| `custom:controlz-home-grid` | All Rooms: security banner (Secure / Motion / Insecure) and a room tile per area. |
+| `custom:controlz-home-grid` | All Rooms: security banner (tap for the device list) and a room tile per area. |
+| `custom:controlz-rooms-app` | Sidebar layout: room sidebar plus the selected room (use in a panel view; the strategy adds it for `room_nav: sidebar`). |
 | `custom:controlz-tile-card` | One device tile; the tile type is picked from the entity. |
 | `custom:controlz-room-icons-card` | The icon each room resolved to (and why), plus the searchable room icon registry. |
 
@@ -85,10 +110,13 @@ Set `icon_source: area` to prefer Home Assistant area icons. An icon can be a re
 ```yaml
 strategy:
   type: custom:controlz-rooms
-  tile_size: large                 # large | thin | compact
+  room_nav: tabs                   # tabs | sidebar
+  tile_size: large                 # large | thin | compact (each device can override in the View menu)
   areas_order: [office, kitchen]   # pinned first
   hide_areas: [utility]            # left out
   scenes_style: chips              # chips | tiles
+  security_include: []             # only these entity ids raise the security banner
+  security_exclude: [binary_sensor.office_window]   # never raise the banner
   icon_source: controlz            # controlz | area
   room_icons:                      # per-area icon overrides
     office: Library
@@ -123,7 +151,7 @@ npm run build       # dist/controlz-ha.js
 npm run serve       # then open http://127.0.0.1:8765/dev/harness.html
 ```
 
-`dev/harness.html` renders the dashboard against a mock `hass` (`dev/fixture.js`); service calls change the fixture state and show in a log overlay. Query parameters: `?view=room-office&size=thin&dark=1`. `?fit=1` measures every tile at every size and reports any that are off-contract, clipped or overflowing.
+`dev/harness.html` renders the dashboard against a mock `hass` (`dev/fixture.js`); service calls change the fixture state and show in a log overlay. Query parameters: `?view=room-office&size=thin&dark=1&nav=sidebar&open=menu|security`. `?fit=1` measures every tile at every size and reports any that are off-contract, clipped or overflowing.
 
 **Deploy a dev build without HACS** (copies to `config/www` over SSH and creates the dashboard):
 

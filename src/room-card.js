@@ -1,5 +1,5 @@
 import { areaItems } from "./area-cache.js";
-import { CzElement, escapeHtml, navigate } from "./base.js";
+import { CzElement, escapeHtml, fireEvent, navigate } from "./base.js";
 import { rangeRow, syncRange } from "./controls.js";
 import { ICONS } from "./icons.js";
 import { followGradient, roomSummary } from "./model.js";
@@ -78,7 +78,7 @@ export class RoomCard extends CzElement {
       colorable: s.colorLights.length > 0,
       ctable: s.ctLights.length > 0,
       positionable: s.positionableCovers.length > 0,
-      navigable: !!this._config.navigation_path,
+      navigable: !!this._config.navigation_path || !!this._config.select_area,
       sheet: !!this._sheetOpen,
     };
     return { model, html: this._html(model) };
@@ -244,7 +244,8 @@ export class RoomCard extends CzElement {
   }
 
   onTileClick() {
-    if (this._config.navigation_path) navigate(this._config.navigation_path);
+    if (this._config.select_area) fireEvent(this, "controlz-select-area", { area: this._config.area });
+    else if (this._config.navigation_path) navigate(this._config.navigation_path);
     else {
       this._sheetOpen = true;
       this.requestRender(true);
