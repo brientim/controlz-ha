@@ -27,4 +27,4 @@ git push origin HEAD "${tag}"
 gh release create "${tag}" dist/controlz-ha.js \
   --title "ControlZ HA ${tag}" \
   --generate-notes
-echo "Released ${tag}. HACS users get it via HACS → ControlZ HA → Update."
+echo "Released ${tag}. It appears under Settings → Updates (Marketplace, HA 2026.11+) or HACS → ControlZ HA (older HA)."
