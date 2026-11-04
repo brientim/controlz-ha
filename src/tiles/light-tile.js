@@ -95,6 +95,7 @@ export class LightTile extends CzElement {
       subtitle: lightBadge(stateObj),
       body: lightControls({ dimmable: caps.dimmable, brightness: brightnessPct(stateObj) ?? 0, ct: caps.ct, color: caps.color }),
       detailsEntity: entityId,
+      favorite: this.favoriteOn,
     });
   }
 

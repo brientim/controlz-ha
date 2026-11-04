@@ -9,6 +9,10 @@ export const TILE_TAGS = {
   [KIND.SENSOR]: "controlz-sensor-tile",
   [KIND.SECURITY]: "controlz-security-tile",
   [KIND.SCENE]: "controlz-scene-tile",
+  [KIND.AUTOMATION]: "controlz-automation-tile",
+  [KIND.CLIMATE]: "controlz-climate-tile",
+  [KIND.FAN]: "controlz-fan-tile",
+  [KIND.CAMERA]: "controlz-camera-tile",
   [KIND.OTHER]: "controlz-other-tile",
   room: "controlz-room-card",
 };

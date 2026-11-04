@@ -1,9 +1,11 @@
 /**
- * Hide rooms and devices (dashboard-wide, like ControlZ room / device hiding).
+ * Hide rooms and devices, and room order (dashboard-wide, like ControlZ room / device hiding and
+ * Room Order).
  *
- * Hidden lists live in the ControlZ dashboard config (`hide_areas`, `hide_entities` on the
- * `custom:controlz-rooms` strategy), so every device sees the same thing. Saving needs an admin.
- * After a save, cards update straight away from `override`; the view tabs follow on reload.
+ * Hidden lists and the room order live in the ControlZ dashboard config (`hide_areas`,
+ * `hide_entities`, `areas_order` on the `custom:controlz-rooms` strategy), so every device sees
+ * the same thing. Saving needs an admin. After a save, cards update straight away from `override`;
+ * the view tabs follow on reload.
  */
 export const HIDDEN_EVENT = "controlz-ha-hidden";
 export const EDIT_EVENT = "controlz-ha-edit";
@@ -11,7 +13,12 @@ export const EDIT_EVENT = "controlz-ha-edit";
 const STRATEGY_TYPE = "custom:controlz-rooms";
 
 let override = null;
+let orderOverride = null;
+let entitiesOverride = null;
 let editing = false;
+
+/** Key for automations without a room in `entities_order`. */
+export const NO_AREA = "__none";
 
 export function hiddenLists(config = {}) {
   const lists = override || config;
@@ -20,6 +27,12 @@ export function hiddenLists(config = {}) {
     entities: new Set(lists.hide_entities || []),
   };
 }
+
+/** Room order: the one saved this session, else the dashboard config's `areas_order`. */
+export const areasOrder = (config = {}) => orderOverride || config.areas_order || [];
+
+/** Device tile order in one room (`entities_order.<area_id>`); unlisted devices follow by name. */
+export const entitiesOrder = (config = {}, areaId) => (entitiesOverride || config.entities_order || {})[areaId || NO_AREA] || [];
 
 export const isEditing = () => editing;
 
@@ -34,25 +47,88 @@ export function currentDashboardPath() {
   return first === "lovelace" ? null : first;
 }
 
-/** Hide (`hide = true`) or show an area or entity by saving the dashboard's strategy config. */
-export async function setHidden(hass, kind, id, hide) {
-  if (!hass?.user?.is_admin) throw new Error("Only Home Assistant admins can hide rooms and devices.");
+async function saveStrategy(hass, what, mutate) {
+  if (!hass?.user?.is_admin) throw new Error(`Only Home Assistant admins can ${what}.`);
   const urlPath = currentDashboardPath();
   const config = await hass.callWS({ type: "lovelace/config", url_path: urlPath, force: false });
   if (config?.strategy?.type !== STRATEGY_TYPE) {
-    throw new Error("Hiding works on the ControlZ dashboard (strategy custom:controlz-rooms).");
+    throw new Error(`${what[0].toUpperCase()}${what.slice(1)} works on the ControlZ dashboard (strategy custom:controlz-rooms).`);
   }
-  const key = kind === "area" ? "hide_areas" : "hide_entities";
-  const list = new Set(config.strategy[key] || []);
-  if (hide) list.add(id);
-  else list.delete(id);
-  const strategy = { ...config.strategy, [key]: [...list].sort() };
-  if (!strategy[key].length) delete strategy[key];
+  const strategy = mutate({ ...config.strategy });
   await hass.callWS({ type: "lovelace/config/save", url_path: urlPath, config: { ...config, strategy } });
+  return strategy;
+}
+
+/** Hide (`hide = true`) or show an area or entity by saving the dashboard's strategy config. */
+export async function setHidden(hass, kind, id, hide) {
+  const key = kind === "area" ? "hide_areas" : "hide_entities";
+  const strategy = await saveStrategy(hass, "hide rooms and devices", (s) => {
+    const list = new Set(s[key] || []);
+    if (hide) list.add(id);
+    else list.delete(id);
+    s[key] = [...list].sort();
+    if (!s[key].length) delete s[key];
+    return s;
+  });
   override = { hide_areas: strategy.hide_areas || [], hide_entities: strategy.hide_entities || [] };
   window.dispatchEvent(new CustomEvent(HIDDEN_EVENT, { detail: override }));
   return override;
 }
 
-/** True when this page session changed the hidden rooms (tabs need a reload to follow). */
-export const hiddenAreasChangedThisSession = () => override !== null;
+/** Save the room order (area ids, first shown first) to the dashboard's `areas_order`. */
+export async function setAreasOrder(hass, order) {
+  const strategy = await saveStrategy(hass, "reorder rooms", (s) => {
+    s.areas_order = [...new Set(order)];
+    if (!s.areas_order.length) delete s.areas_order;
+    return s;
+  });
+  orderOverride = strategy.areas_order || [];
+  window.dispatchEvent(new CustomEvent(HIDDEN_EVENT, { detail: { areas_order: orderOverride } }));
+  return orderOverride;
+}
+
+/** Save one room's device tile order (entity ids, first shown first) to the dashboard's `entities_order`. */
+export async function setEntitiesOrder(hass, areaId, order) {
+  const key = areaId || NO_AREA;
+  const strategy = await saveStrategy(hass, "reorder devices", (s) => {
+    const all = { ...(s.entities_order || {}) };
+    all[key] = [...new Set(order)];
+    if (!all[key].length) delete all[key];
+    s.entities_order = all;
+    if (!Object.keys(all).length) delete s.entities_order;
+    return s;
+  });
+  entitiesOverride = strategy.entities_order || {};
+  window.dispatchEvent(new CustomEvent(HIDDEN_EVENT, { detail: { entities_order: entitiesOverride } }));
+  return entitiesOverride;
+}
+
+/**
+ * `full` with the members of `subset` put in `subset`'s order, each taking one of the places the
+ * members already had (so reordering one section leaves the rest of the room where it was).
+ * Subset members missing from `full` go at the end.
+ */
+export function reorderSubset(full, subset) {
+  const members = new Set(subset);
+  const queue = [...subset];
+  const out = full.map((id) => (members.has(id) ? queue.shift() : id));
+  return [...out, ...queue];
+}
+
+/**
+ * New order after moving `id` by `delta` places (or to just before `beforeId` when dropping),
+ * starting from the rooms as currently shown.
+ */
+export function movedOrder(shown, id, { delta = 0, beforeId = null } = {}) {
+  const list = shown.filter((a) => a !== id);
+  const from = shown.indexOf(id);
+  if (from < 0) return shown;
+  let to;
+  if (beforeId != null) to = beforeId === "" ? list.length : Math.max(0, list.indexOf(beforeId));
+  else to = Math.min(list.length, Math.max(0, from + delta));
+  list.splice(to, 0, id);
+  return list;
+}
+
+/** True when this page session changed hidden rooms or room order (tabs need a reload to follow). */
+export const roomsChangedThisSession = () => override !== null || orderOverride !== null;

@@ -2,7 +2,7 @@ import { visibleItems } from "./area-cache.js";
 import { CzElement, escapeHtml, fireEvent, navigate } from "./base.js";
 import { rangeRow, syncRange } from "./controls.js";
 import { ICONS } from "./icons.js";
-import { followGradient, roomSummary } from "./model.js";
+import { followGradient, roomReadings, roomSummary } from "./model.js";
 import { resolveAreaIcon, roomIconSvg } from "./room-icons.js";
 import { coverControls, lightControls, sheetFrame } from "./sheet.js";
 import { TILE_STYLES } from "./styles.js";
@@ -35,6 +35,11 @@ export class RoomCard extends CzElement {
 
   _summary() {
     return roomSummary(this._hass, visibleItems(this._hass, this._config.area, this._config));
+  }
+
+  _readings() {
+    const unit = this._hass?.config?.unit_system?.temperature || "°C";
+    return roomReadings(this._hass, visibleItems(this._hass, this._config.area, this._config), unit).text;
   }
 
   view() {
@@ -75,6 +80,7 @@ export class RoomCard extends CzElement {
       ctable: s.ctLights.length > 0,
       positionable: s.positionableCovers.length > 0,
       navigable: !!this._config.navigation_path || !!this._config.select_area,
+      readings: this._config.show_readings === false ? "" : this._readings(),
     };
     return model;
   }
@@ -146,11 +152,16 @@ export class RoomCard extends CzElement {
       m.hasLights && lightControls({ label: "Lights", dimmable: m.dimmable, brightness: m.brightness, ct: m.ctable, color: m.colorable }),
       m.hasCovers && coverControls({ label: `Coverings · ${m.coverStatus}`, positionable: m.positionable, position: m.coverPosition }),
     ].filter(Boolean).join("");
-    return sheetFrame({ title: m.name, subtitle: m.hasLights ? `Lights ${m.lightStatus}` : "", body });
+    const subtitle = [m.hasLights && `Lights ${m.lightStatus}`, m.readings].filter(Boolean).join(" · ");
+    return sheetFrame({ title: m.name, subtitle, body, favorite: this.favoriteOn });
   }
 
   sheetDetailsEntity() {
     return null;
+  }
+
+  favoriteTarget() {
+    return { kind: "area", id: this._config.area };
   }
 
   _html(m) {
@@ -163,6 +174,7 @@ export class RoomCard extends CzElement {
           <span class="icon room-icon" aria-hidden="true">${m.iconSvg}</span>
           <div class="name-block">
             <div class="name">${escapeHtml(m.name)}</div>
+            ${m.readings ? `<div class="readings large-only">${escapeHtml(m.readings)}</div>` : ""}
             ${compact ? this._chips(m, "under") : ""}
           </div>
           ${compact ? "" : this._chips(m, "trailing")}

@@ -194,6 +194,57 @@ export const TILE_STYLES = `
   :host([size="thin"]) .hide-thin { display: none !important; }
   :host([size="compact"]) .hide-compact { display: none !important; }
   :host(:not([size="large"])) .large-only { display: none !important; }
+
+  /* Room readings (ControlZ room sensor banner): temperature · humidity under the room name. */
+  .readings { font-size: 0.78rem; font-weight: 600; color: var(--cz-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .tile.on .readings { color: inherit; opacity: 0.8; }
+
+  /* Thermostat: orange while heating, blue while cooling; +/− setpoint row. */
+  .tile.heat { background: linear-gradient(135deg, #ffedd5 0%, #fdba74 100%); border-color: #fb923c; color: #431407; }
+  .tile.cool { background: linear-gradient(135deg, #e0f2fe 0%, #7dd3fc 100%); border-color: #38bdf8; color: #082f49; }
+  .tile.heat .badge, .tile.cool .badge { background: rgba(255,255,255,0.65); color: inherit; font-weight: 700; }
+  .tile.heat .info, .tile.cool .info { color: inherit; opacity: 0.85; }
+  .tile.heat .big-value, .tile.cool .big-value { color: inherit; }
+  .temps { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .temps .info { white-space: nowrap; }
+  .step-btn {
+    appearance: none; width: 32px; min-width: 32px; height: 32px; padding: 0; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--cz-border); background: #111827; color: #fff; font: inherit; font-size: 1.05rem; font-weight: 700; line-height: 1;
+  }
+  .step-btn:disabled { opacity: 0.4; cursor: default; }
+  :host([size="thin"]) .step-btn { width: 30px; min-width: 30px; height: 30px; }
+  :host([size="compact"]) .step-btn { width: 26px; min-width: 26px; height: 26px; font-size: 0.9rem; }
+  .setpoint { flex: 1; min-width: 0; text-align: center; font-weight: 700; font-size: 0.95rem; white-space: nowrap; }
+  :host([size="compact"]) .setpoint { font-size: 0.8rem; }
+  .setpoint.pending { opacity: 0.6; }
+
+  /* Fan: teal when on, so it never reads as a lit light. */
+  .tile.fan-on { background: linear-gradient(135deg, #ccfbf1 0%, #5eead4 100%); border-color: #2dd4bf; color: #042f2e; }
+  .tile.fan-on .badge { background: rgba(255,255,255,0.65); color: inherit; font-weight: 700; }
+  .range-row.speed .range-icon { color: #0d9488; }
+  .cz-range.range-speed { --fill: #14b8a6; }
+  .tile.fan-on .range-row.speed .range-icon { color: #134e4a; }
+  .tile.fan-on .cz-range { --rest: rgba(4,47,46,0.2); }
+
+  /* Camera: snapshot fills the tile; name and state sit on a dark gradient. */
+  .tile.camera { padding: 0; background: #0f172a; color: #fff; border-color: #1e293b; }
+  .tile.camera .snap { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tile.camera .no-snap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 2rem; opacity: 0.5; }
+  .tile.camera .header {
+    position: relative; z-index: 1; padding: var(--tile-pad);
+    background: linear-gradient(180deg, rgba(15,23,42,0.85) 0%, rgba(15,23,42,0) 100%);
+  }
+  .tile.camera .icon { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.25); }
+  .tile.camera .badge { background: rgba(15,23,42,0.6); color: #fff; }
+  .tile.camera .badge.live { background: #dc2626; }
+
+  /* Automation tile extras: "What this will do" (Large), edit / delete icon buttons. */
+  .what-btn {
+    appearance: none; border: none; background: none; padding: 0; margin: 0; cursor: pointer; text-align: left;
+    font: inherit; font-size: 0.75rem; font-weight: 600; color: var(--cz-primary);
+  }
+  .tile.scene.disabled .scene-icon { filter: grayscale(1); opacity: 0.6; }
+  .tile.scene.disabled .name { opacity: 0.7; }
 `;
 
 export const SCENE_STYLES = `
@@ -289,6 +340,43 @@ export const SHEET_STYLES = `
   .sec-row .what { margin-left: auto; font-size: 0.8rem; color: var(--cz-text-secondary); }
   .sec-empty { color: var(--cz-text-secondary); font-size: 0.9rem; }
   .sec-scope { font-size: 0.75rem; color: var(--cz-text-secondary); }
+
+  .sheet-fav {
+    width: 32px; height: 32px; border-radius: 50%; border: none; background: var(--cz-bg-secondary);
+    color: var(--cz-text-secondary); cursor: pointer; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  }
+  .sheet-fav svg { width: 18px; height: 18px; }
+  .sheet-fav[aria-pressed="true"] { color: #e11d48; }
+  .sheet .btn.secondary { background: var(--cz-bg-secondary); color: var(--cz-text); }
+  .sheet .btn[aria-pressed="true"], .sheet .btn.secondary[aria-pressed="true"] { background: var(--cz-primary); border-color: var(--cz-primary); color: #fff; }
+  .sheet .btn.danger { background: #b91c1c; border-color: #b91c1c; }
+  .btn-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+  .btn-wrap .btn { flex: 1 1 auto; min-width: 72px; }
+  .sheet .note { margin: 0; font-size: 0.8rem; color: var(--cz-text-secondary); }
+  .sheet .error { margin: 0; font-size: 0.82rem; font-weight: 600; color: #b91c1c; }
+  .sheet ul.lines { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; font-size: 0.88rem; }
+  .sheet .lines-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: var(--cz-text-secondary); margin-top: 2px; }
+  .sheet .big-row { display: flex; align-items: center; gap: 10px; }
+  .sheet .big-row .setpoint { font-size: 1.5rem; }
+  .sheet .step-btn { width: 40px; min-width: 40px; height: 40px; }
+
+  /* Alarm keypad. */
+  .code-dots { text-align: center; font-size: 1.4rem; letter-spacing: 0.3em; min-height: 1.8rem; font-weight: 700; }
+  .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .keypad .btn { min-height: 44px; font-size: 1.1rem; }
+  .code-input, .field input, .field select {
+    width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--cz-border);
+    background: var(--cz-card-bg); color: var(--cz-text); font: inherit; font-size: 0.92rem;
+  }
+
+  /* Automation editor form. */
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field > span { font-size: 0.75rem; font-weight: 600; color: var(--cz-text-secondary); }
+  .field-row { display: flex; gap: 8px; }
+  .field-row > .field { flex: 1; min-width: 0; }
+
+  .sec-row .level { margin-left: auto; font-weight: 700; font-size: 0.85rem; }
+  .sec-row .level.low { color: #b91c1c; }
 `;
 
 export const GRID_STYLES = `
@@ -337,7 +425,7 @@ export const GRID_STYLES = `
   }
   .empty { color: var(--cz-text-secondary); padding: 24px; text-align: center; }
 
-  /* Hide rooms & devices edit mode. Buttons keep their on-screen size at any tile scale. */
+  /* Edit rooms & favorites mode. Buttons keep their on-screen size at any tile scale. */
   .edit-banner {
     display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
     padding: 10px 14px; border-radius: 12px; background: rgba(79,70,229,0.12);
@@ -360,5 +448,49 @@ export const GRID_STYLES = `
   }
   .hide-toggle svg { width: 60%; height: 60%; }
   .hide-toggle[aria-pressed="true"] { background: #6b7280; }
-  .hide-toggle:disabled { opacity: 0.5; cursor: wait; }
+  .hide-toggle:disabled, .fav-toggle:disabled, .move-btn:disabled { opacity: 0.5; cursor: wait; }
+  .grid:has(.tile-wrap) { padding-left: 10px; column-gap: calc(var(--tile-gap) + 24px); row-gap: calc(var(--tile-gap) + 16px); }
+  .fav-toggle, .move-btn {
+    position: absolute; z-index: 2;
+    width: calc(34px / var(--cz-scale, 1)); height: calc(34px / var(--cz-scale, 1));
+    border-radius: 50%; border: 2px solid #fff; background: rgba(17,24,39,0.88); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3); padding: 0;
+  }
+  .fav-toggle { top: calc(-10px / var(--cz-scale, 1)); left: calc(-10px / var(--cz-scale, 1)); }
+  .fav-toggle[aria-pressed="true"] { background: #e11d48; }
+  .fav-toggle svg, .move-btn svg { width: 55%; height: 55%; }
+  .move-btn { bottom: calc(-6px / var(--cz-scale, 1)); }
+  .move-btn.prev { left: calc(-10px / var(--cz-scale, 1)); }
+  .move-btn.next { right: calc(-10px / var(--cz-scale, 1)); }
+  .grid:has(.move-btn) { padding-bottom: 10px; }
+  .tile-wrap[draggable="true"] { cursor: grab; }
+  .tile-wrap.drag-over { outline: 3px dashed var(--cz-primary); outline-offset: 4px; border-radius: var(--cz-radius); }
+  .tile-wrap.dragging { opacity: 0.4; }
+
+  /* All Rooms filter row: All / On / Off, maintenance chip, All lights off. */
+  .filter-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: -4px 0 16px; }
+  .seg { display: inline-flex; gap: 3px; padding: 3px; border-radius: 10px; background: var(--cz-bg-secondary); }
+  .seg button {
+    border: none; background: transparent; color: var(--cz-text); padding: 6px 12px; border-radius: 8px;
+    font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--cz-primary); color: #fff; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; min-height: 34px; border-radius: 999px;
+    border: 1px solid var(--cz-border); background: var(--cz-card-bg); color: var(--cz-text);
+    font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+  }
+  .pill.warn { border-color: #fdba74; background: #fff7ed; color: #9a3412; }
+  .filter-row .spacer { flex: 1; }
+  .section-head { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+  .section-head h2 { margin: 0; flex: 1; }
+  .head-btn {
+    border: 1px solid var(--cz-border); background: var(--cz-card-bg); color: var(--cz-primary);
+    border-radius: 8px; padding: 4px 10px; font: inherit; font-size: 0.78rem; font-weight: 700; cursor: pointer;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .page-head .section-head { flex-wrap: wrap; row-gap: 6px; }
+  .readings-inline { font-size: 0.9rem; font-weight: 600; color: var(--cz-text-secondary); white-space: nowrap; }
+  .empty p { margin: 6px 0; }
 `;

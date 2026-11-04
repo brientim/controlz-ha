@@ -57,3 +57,25 @@ export function effectiveNav(configNav) {
   if (NAVS.includes(pref)) return pref;
   return NAVS.includes(configNav) ? configNav : "tabs";
 }
+
+/** All Rooms filter (ControlZ LightFilter): every room, rooms with something on, or rooms that are off. */
+export const HOME_FILTERS = ["all", "on", "off"];
+export const homeFilter = () => (HOME_FILTERS.includes(readPrefs().home_filter) ? readPrefs().home_filter : "all");
+
+/**
+ * Start page on this device (ControlZ Startup Room): a view path such as `room-office`,
+ * `favorites` or `automations`; null = All Rooms.
+ */
+export const startPage = () => (typeof readPrefs().start_page === "string" ? readPrefs().start_page : null);
+
+let startTaken = false;
+
+/**
+ * The start page, once per page load: only the first ControlZ page that opens may jump to it,
+ * so later visits to All Rooms (and deep links) are left alone.
+ */
+export function takeStartPage() {
+  if (startTaken) return null;
+  startTaken = true;
+  return startPage();
+}

@@ -45,13 +45,20 @@
   <main id="view"></main>
   <div id="log"></div>
 
+  <script>
+    window.__errors = [];
+    window.addEventListener("error", (e) => window.__errors.push(String(e.message)));
+    window.addEventListener("unhandledrejection", (e) => window.__errors.push(String(e.reason?.stack || e.reason)));
+  </script>
   <script type="module">
     import "../dist/controlz-ha.js";
     import { createMockHass } from "./mock-hass.js";
 
     window.confirm = () => true;
     if (new URLSearchParams(location.search).has("fit")) localStorage.removeItem("controlz-ha.prefs");
-    if (new URLSearchParams(location.search).has("fresh")) sessionStorage.removeItem("controlz-harness-dashboard");
+    if (new URLSearchParams(location.search).has("fresh")) {
+      for (const key of ["controlz-harness-dashboard", "controlz-harness-user-data", "controlz-harness-automations"]) sessionStorage.removeItem(key);
+    }
     const log = document.getElementById("log");
     const print = (msg) => { log.textContent = `${msg}\n${log.textContent}`.slice(0, 4000); };
 
@@ -77,7 +84,7 @@
 
     function currentPath() {
       const seg = location.pathname.split("/").pop();
-      return seg.startsWith("room-") || seg === "room-icons" ? seg : "rooms";
+      return seg.startsWith("room-") || ["favorites", "automations"].includes(seg) ? seg : "rooms";
     }
 
     function renderView(_event, forcedPath) {
@@ -205,6 +212,23 @@
         }
         if (open === "light-sheet") deepFind("controlz-light-tile .color-btn, .color-btn[data-action=color]").click();
         if (open === "room-sheet") deepFind("[data-action=sheet-open]").click();
+        if (open === "maintenance") deepFind("[data-maintenance]").click();
+        const tileSheet = { "climate-sheet": "climate.", "fan-sheet": "fan.", "alarm-sheet": "alarm_control_panel.", "automation-sheet": "automation." }[open];
+        if (tileSheet) {
+          const deepAll = (root = document, out = []) => {
+            for (const el of root.querySelectorAll("*")) {
+              if (el._config?.entity) out.push(el);
+              if (el.shadowRoot) deepAll(el.shadowRoot, out);
+            }
+            return out;
+          };
+          deepAll().find((t) => t._config.entity.startsWith(tileSheet) && t.onTileClick)?.onTileClick();
+          await new Promise((r) => setTimeout(r, 300));
+        }
+        if (open === "editor-sheet") {
+          deepFind("[data-new-automation]").click();
+          await new Promise((r) => setTimeout(r, 100));
+        }
         if (open.endsWith("-sheet")) {
           await new Promise((r) => setTimeout(r, 50));
           const sheet = document.querySelector("controlz-sheet")?.shadowRoot.querySelector(".sheet");

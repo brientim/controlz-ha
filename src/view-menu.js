@@ -1,7 +1,10 @@
 import {
   NAVS, PREFS_EVENT, SCALE_MAX, SCALE_MIN, SCALE_STEP, SIZES,
-  effectiveNav, effectiveScale, effectiveSize, readPrefs, writePrefs,
+  effectiveNav, effectiveScale, effectiveSize, readPrefs, startPage, writePrefs,
 } from "./prefs.js";
+
+const escapeAttr = (value) =>
+  String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 import { setEditing } from "./hidden.js";
 import { TOKENS } from "./styles.js";
 
@@ -20,6 +23,7 @@ const STYLES = `
     position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 220px;
     background: var(--cz-card-bg); color: var(--cz-text); border: 1px solid var(--cz-border);
     border-radius: 14px; box-shadow: 0 12px 32px rgba(0,0,0,0.2); padding: 10px;
+    max-height: calc(100vh - 120px); max-height: calc(100dvh - 120px); overflow-y: auto;
   }
   :host([align="left"]) .menu { left: 0; right: auto; }
   .label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--cz-text-secondary); margin: 4px 4px 6px; }
@@ -50,9 +54,10 @@ const STYLES = `
 const ICON = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg>`;
 
 /**
- * "View" menu: tile size (applies live) and room navigation (reloads, because the dashboard
- * strategy picks the layout). Choices are stored per device; attributes give the dashboard defaults.
- *   <controlz-view-menu default-size="large" default-nav="tabs" show-nav></controlz-view-menu>
+ * "View" menu: tile size (applies live), room navigation (reloads, because the dashboard
+ * strategy picks the layout), start page, and edit mode (favorites for everyone; hide and
+ * reorder for admins). Choices are stored per device; attributes give the dashboard defaults.
+ *   <controlz-view-menu default-size="large" default-nav="tabs" show-nav editable admin page-id="room-office" page-name="Office">
  */
 export class ViewMenu extends HTMLElement {
   constructor() {
@@ -82,6 +87,14 @@ export class ViewMenu extends HTMLElement {
     };
   }
 
+  static get observedAttributes() {
+    return ["page-id", "page-name"];
+  }
+
+  attributeChangedCallback() {
+    if (this.isConnected && this._open) this._render();
+  }
+
   connectedCallback() {
     window.addEventListener(PREFS_EVENT, this._onPrefs);
     document.addEventListener("click", this._onOutside, true);
@@ -103,7 +116,19 @@ export class ViewMenu extends HTMLElement {
     const size = effectiveSize(this.getAttribute("default-size"));
     const nav = effectiveNav(this.getAttribute("default-nav"));
     const scale = Math.round(effectiveScale(this.getAttribute("default-scale")) * 100);
-    const custom = Object.keys(readPrefs()).length > 0;
+    const prefs = readPrefs();
+    const custom = ["tile_size", "room_nav", "tile_scale"].some((k) => prefs[k] != null);
+    const pageId = this.getAttribute("page-id");
+    const start = startPage();
+    const startName = start ? prefs.start_name || start : "All Rooms";
+    const here = pageId && (pageId === start || (pageId === "rooms" && !start));
+    const startHtml = pageId
+      ? `<div class="label">Start page</div>
+        <p class="note">This device opens on <strong>${escapeAttr(startName)}</strong>.</p>
+        ${here ? "" : `<button type="button" class="edit-btn" data-start>⌂ Start on ${escapeAttr(this.getAttribute("page-name") || "this page")}</button>`}
+        ${start && pageId !== "rooms" && here ? `<button type="button" class="reset" data-start-clear>Start on All Rooms</button>` : ""}`
+      : "";
+    const admin = this.hasAttribute("admin");
     this.shadowRoot.innerHTML = `<style>${STYLES}</style>
       <button type="button" class="trigger" aria-haspopup="true" aria-expanded="${this._open}" data-toggle>
         ${ICON}<span>View</span>
@@ -121,8 +146,9 @@ export class ViewMenu extends HTMLElement {
           `<button type="button" data-scale="${p / 100}" aria-pressed="${p === scale}">${p}%</button>`).join("")}</div>
         ${this.hasAttribute("show-nav") ? `<div class="label">Rooms</div>${this._segment("nav", NAVS, nav)}` : ""}
         <p class="note">Saved on this device only.</p>
-        ${this.hasAttribute("editable") ? `<button type="button" class="edit-btn" data-edit>👁 Hide rooms &amp; devices…</button>` : ""}
         ${custom ? `<button type="button" class="reset" data-reset>Use dashboard defaults</button>` : ""}
+        ${startHtml}
+        ${this.hasAttribute("editable") ? `<button type="button" class="edit-btn" data-edit>${admin ? "♥ 👁 Edit rooms &amp; favorites…" : "♥ Edit favorites…"}</button>` : ""}
       </div>` : ""}`;
   }
 
@@ -145,6 +171,11 @@ export class ViewMenu extends HTMLElement {
     if (target.dataset.scale) writePrefs({ tile_scale: Number(target.dataset.scale) });
     if (target.dataset.nav) writePrefs({ room_nav: target.dataset.nav });
     if (target.hasAttribute("data-reset")) writePrefs({ tile_size: null, room_nav: null, tile_scale: null });
+    if (target.hasAttribute("data-start")) {
+      const id = this.getAttribute("page-id");
+      writePrefs(id === "rooms" ? { start_page: null, start_name: null } : { start_page: id, start_name: this.getAttribute("page-name") });
+    }
+    if (target.hasAttribute("data-start-clear")) writePrefs({ start_page: null, start_name: null });
     if (effectiveNav(this.getAttribute("default-nav")) !== navBefore) {
       location.reload();
     }

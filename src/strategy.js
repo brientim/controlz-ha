@@ -1,5 +1,5 @@
 import { areaItems } from "./area-cache.js";
-import { sortedAreas } from "./model.js";
+import { automationGroups, sortedAreas } from "./model.js";
 import { effectiveNav } from "./prefs.js";
 import { resolveAreaIcon } from "./room-icons.js";
 
@@ -11,11 +11,17 @@ import { resolveAreaIcon } from "./room-icons.js";
  *     room_nav: tabs            # tabs = All Rooms + one view (tab) per area; sidebar = ControlZ room sidebar
  *     tile_size: large          # large | thin | compact (default; each device can override from the View menu)
  *     tile_scale: 1             # 0.4–1.5; 0.6 shrinks every page ~40% so more tiles fit (View menu: 100/80/60%)
- *     areas_order: [office]     # optional, pinned first
- *     hide_areas: [garage]      # optional: rooms left out (View → Hide rooms & devices edits this)
+ *     areas_order: [office]     # optional, pinned first (View → Edit rooms & favorites reorders)
+ *     hide_areas: [garage]      # optional: rooms left out (View → Edit rooms & favorites edits this)
  *     hide_entities: []         # optional: devices left out of tiles and room controls
+ *     entities_order:           # optional: device tile order per room (edit mode reorders); others follow by name
+ *       office: [light.desk_lamp, light.ceiling]
  *     security_include: []      # optional: only these entities can raise the security banner
  *     security_exclude: []      # optional: entities that never raise the security banner
+ *     favorites_view: true      # false = no Favorites view (favorites are per Home Assistant user)
+ *     automations_view: true    # false = no Automations view (room pages still list their automations)
+ *     battery_threshold: 20     # All Rooms maintenance report: batteries under this % count as low
+ *     show_maintenance: true    # false = no low battery / offline chip on All Rooms
  *     view_icons: false         # tabs only: room icons in tabs (HA then hides tab titles)
  *     icon_source: controlz     # controlz = ControlZ room icon registry first; area = HA area icon first
  *     room_icons:               # optional per-area override: registry name, registry id or mdi:*
@@ -39,6 +45,7 @@ export class ControlZRoomsStrategy extends HTMLElement {
       editable: true,
       ...(config.hide_areas ? { hide_areas: config.hide_areas } : {}),
       ...(config.hide_entities ? { hide_entities: config.hide_entities } : {}),
+      ...(config.entities_order ? { entities_order: config.entities_order } : {}),
       ...(config.room_icons ? { room_icons: config.room_icons } : {}),
       ...(config.icon_source ? { icon_source: config.icon_source } : {}),
     };
@@ -46,6 +53,13 @@ export class ControlZRoomsStrategy extends HTMLElement {
       ...(config.security_include ? { security_include: config.security_include } : {}),
       ...(config.security_exclude ? { security_exclude: config.security_exclude } : {}),
     };
+    const home = {
+      ...(config.battery_threshold != null ? { battery_threshold: config.battery_threshold } : {}),
+      ...(config.show_maintenance != null ? { show_maintenance: config.show_maintenance } : {}),
+    };
+    const scenes = config.scenes_style ? { scenes_style: config.scenes_style } : {};
+    const showFavorites = config.favorites_view !== false;
+    const showAutomations = config.automations_view !== false && automationGroups(hass).length > 0;
     const iconsView = config.icons_view
       ? [{ title: "Room Icons", path: "room-icons", type: "panel", cards: [{ type: "custom:controlz-room-icons-card", ...shared }] }]
       : [];
@@ -62,9 +76,12 @@ export class ControlZRoomsStrategy extends HTMLElement {
               type: "custom:controlz-rooms-app",
               ...shared,
               ...security,
+              ...home,
+              ...scenes,
               areas_order: areaOptions.order,
               hide_areas: areaOptions.hide,
-              ...(config.scenes_style ? { scenes_style: config.scenes_style } : {}),
+              ...(showFavorites ? {} : { favorites_view: false }),
+              ...(config.automations_view === false ? { automations_view: false } : {}),
             }],
           },
           ...iconsView,
@@ -85,10 +102,25 @@ export class ControlZRoomsStrategy extends HTMLElement {
             type: "custom:controlz-home-grid",
             ...shared,
             ...security,
+            ...home,
             areas_order: areaOptions.order,
             hide_areas: areaOptions.hide,
           }],
         },
+        ...(showFavorites ? [{
+          title: "Favorites",
+          path: "favorites",
+          ...(config.view_icons ? { icon: "mdi:heart" } : {}),
+          type: "panel",
+          cards: [{ type: "custom:controlz-favorites-grid", ...shared, ...scenes, areas_order: areaOptions.order }],
+        }] : []),
+        ...(showAutomations ? [{
+          title: "Automations",
+          path: "automations",
+          ...(config.view_icons ? { icon: "mdi:robot" } : {}),
+          type: "panel",
+          cards: [{ type: "custom:controlz-automations-grid", ...shared, areas_order: areaOptions.order }],
+        }] : []),
         ...areas.map((a) => ({
           title: a.name,
           path: `room-${a.area_id}`,
@@ -98,7 +130,7 @@ export class ControlZRoomsStrategy extends HTMLElement {
             type: "custom:controlz-room-grid",
             area: a.area_id,
             ...shared,
-            ...(config.scenes_style ? { scenes_style: config.scenes_style } : {}),
+            ...scenes,
           }],
         })),
         ...iconsView,

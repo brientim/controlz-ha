@@ -1,3 +1,4 @@
+import { isFavorite } from "./favorites.js";
 import { HIDDEN_EVENT } from "./hidden.js";
 import { PREFS_EVENT, SIZES, effectiveSize } from "./prefs.js";
 
@@ -10,10 +11,14 @@ export function fireEvent(node, type, detail = {}) {
   node.dispatchEvent(new CustomEvent(type, { detail, bubbles: true, composed: true }));
 }
 
-export function navigate(path) {
-  history.pushState(null, "", path);
-  window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
+export function navigate(path, { replace = false } = {}) {
+  if (replace) history.replaceState(null, "", path);
+  else history.pushState(null, "", path);
+  window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace } }));
 }
+
+/** First path segment of the current dashboard (`/dashboard-controlz`), for links to its views. */
+export const dashboardBase = () => location.pathname.split("/").slice(0, 2).join("/");
 
 /**
  * Base for ControlZ tiles: shadow DOM, signature-diffed re-render (HA pushes `hass`
@@ -101,6 +106,17 @@ export class CzElement extends HTMLElement {
   /** Entity whose Home Assistant dialog "More details" opens. */
   sheetDetailsEntity() {
     return this._config?.entity;
+  }
+
+  /** What the sheet's heart adds to favorites (`{ kind: "entity" | "area", id }`). */
+  favoriteTarget() {
+    return this._config?.entity ? { kind: "entity", id: this._config.entity } : null;
+  }
+
+  /** Heart state for `sheetFrame({ favorite })`. */
+  get favoriteOn() {
+    const target = this.favoriteTarget();
+    return target ? isFavorite(target.kind, target.id) : undefined;
   }
 
   get hass() {

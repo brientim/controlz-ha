@@ -1,5 +1,7 @@
 import { escapeHtml } from "./base.js";
 import { rangeRow, syncRange } from "./controls.js";
+import { FAVORITES_EVENT, toggleFavorite } from "./favorites.js";
+import { ICONS } from "./icons.js";
 import { SHEET_STYLES, TILE_STYLES } from "./styles.js";
 import { oscRow } from "./tiles/cover-tile.js";
 
@@ -39,22 +41,32 @@ export function coverControls({ label, positionable, position }) {
   </div>`;
 }
 
-/** Sheet chrome: title + close, body, then More details (Home Assistant dialog) and Done. */
-export function sheetFrame({ title, subtitle, body, detailsEntity }) {
+/**
+ * Sheet chrome: title + favorite heart (when `favorite` is a boolean) + close, body, then
+ * More details (Home Assistant dialog) and Done — or the owner's own `footer` buttons.
+ */
+export function sheetFrame({ title, subtitle, body, detailsEntity, favorite, footer }) {
+  const heart = typeof favorite === "boolean"
+    ? `<button type="button" class="sheet-fav" data-action="sheet-favorite" aria-pressed="${favorite}"
+        title="${favorite ? "Remove from favorites" : "Add to favorites"}" aria-label="${favorite ? "Remove from favorites" : "Add to favorites"}">${favorite ? ICONS.heart : ICONS.heartOutline}</button>`
+    : "";
   return `<div class="sheet-backdrop" data-action="sheet-close">
     <div class="sheet" data-action="sheet-stay" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
       <div class="sheet-head">
         <div class="sheet-titles"><h3>${escapeHtml(title)}</h3>${subtitle ? `<div class="sheet-sub">${escapeHtml(subtitle)}</div>` : ""}</div>
+        ${heart}
         <button type="button" class="sheet-x" data-action="sheet-close" aria-label="Close">✕</button>
       </div>
       <div class="sheet-body">${body}</div>
       <div class="sheet-foot">
-        ${detailsEntity ? `<button type="button" class="btn ghost" data-action="sheet-details">More details</button>` : ""}
-        <button type="button" class="btn" data-action="sheet-close">Done</button>
+        ${footer ?? `${detailsEntity ? `<button type="button" class="btn ghost" data-action="sheet-details">More details</button>` : ""}
+        <button type="button" class="btn" data-action="sheet-close">Done</button>`}
       </div>
     </div>
   </div>`;
 }
+
+const TYPING = 'input:not([type="range"]):not([type="checkbox"]), select, textarea';
 
 /**
  * ControlZ controls sheet, attached to <body> so no card layout or the Home Assistant header can
@@ -80,6 +92,9 @@ export class CzSheet extends HTMLElement {
     this._onKey = (ev) => {
       if (ev.key === "Escape") this.close();
     };
+    this._onFavorites = () => this.refresh();
+    // A field being typed in is never re-rendered under the user; catch up once focus leaves the fields.
+    this.shadowRoot.addEventListener("focusout", () => setTimeout(() => this.refresh(), 0));
   }
 
   connectedCallback() {
@@ -87,28 +102,39 @@ export class CzSheet extends HTMLElement {
     window.addEventListener("pointerup", this._onPointerUp);
     window.addEventListener("pointercancel", this._onPointerUp);
     window.addEventListener("keydown", this._onKey);
+    window.addEventListener(FAVORITES_EVENT, this._onFavorites);
   }
 
   disconnectedCallback() {
     window.removeEventListener("pointerup", this._onPointerUp);
     window.removeEventListener("pointercancel", this._onPointerUp);
     window.removeEventListener("keydown", this._onKey);
+    window.removeEventListener(FAVORITES_EVENT, this._onFavorites);
+  }
+
+  get owner() {
+    return this._owner;
   }
 
   show(owner) {
     this._owner = owner;
     this._html = null;
     if (!this.isConnected) document.body.append(this);
-    this.refresh();
-    this.shadowRoot.querySelector(".sheet-x")?.focus();
+    this.refresh(true);
+    (this.shadowRoot.querySelector("[autofocus]") || this.shadowRoot.querySelector(".sheet-x"))?.focus();
   }
 
-  refresh() {
-    if (!this._owner || this._dragging) return;
+  /** Re-render from the owner's `sheetBody()`; `force` also re-renders over a focused field. */
+  refresh(force = false) {
+    if (!this._owner || this._dragging || !this.isConnected) return;
+    if (!force && this.shadowRoot.activeElement?.matches?.(TYPING)) return;
     const html = this._owner.sheetBody();
     if (html === this._html) return;
+    const scroll = this.shadowRoot.querySelector(".sheet-body")?.scrollTop ?? 0;
     this._html = html;
     this.shadowRoot.innerHTML = `<style>${TILE_STYLES}${SHEET_STYLES}</style>${html}`;
+    const body = this.shadowRoot.querySelector(".sheet-body");
+    if (body) body.scrollTop = scroll;
   }
 
   close() {
@@ -130,6 +156,11 @@ export class CzSheet extends HTMLElement {
       const owner = this._owner;
       this.close();
       owner.moreInfo(owner.sheetDetailsEntity());
+      return;
+    }
+    if (type === "click" && action === "sheet-favorite") {
+      const fav = this._owner.favoriteTarget?.();
+      if (fav) toggleFavorite(this._owner.hass, fav.kind, fav.id).catch(() => {});
       return;
     }
     if (type === "input" && target.type === "range") {

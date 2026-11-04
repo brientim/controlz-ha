@@ -1,4 +1,4 @@
-import { HomeGrid, RoomGrid } from "./grids.js";
+import { AutomationsGrid, FavoritesGrid, HomeGrid, RoomGrid } from "./grids.js";
 import { classifyEntity, KIND } from "./model.js";
 import { RoomCard } from "./room-card.js";
 import { RoomIconsCard } from "./room-icons-card.js";
@@ -8,7 +8,11 @@ import { CzSheet } from "./sheet.js";
 import { ControlZRoomsStrategy } from "./strategy.js";
 import { createTile } from "./tile-factory.js";
 import { ViewMenu } from "./view-menu.js";
+import { AutomationTile } from "./tiles/automation-tile.js";
+import { CameraTile } from "./tiles/camera-tile.js";
+import { ClimateTile } from "./tiles/climate-tile.js";
 import { CoverTile } from "./tiles/cover-tile.js";
+import { FanTile } from "./tiles/fan-tile.js";
 import { LightTile } from "./tiles/light-tile.js";
 import { OtherTile } from "./tiles/other-tile.js";
 import { SceneTile } from "./tiles/scene-tile.js";
@@ -61,11 +65,17 @@ const ELEMENTS = {
   "controlz-sensor-tile": SensorTile,
   "controlz-security-tile": SecurityTile,
   "controlz-scene-tile": SceneTile,
+  "controlz-automation-tile": AutomationTile,
+  "controlz-climate-tile": ClimateTile,
+  "controlz-fan-tile": FanTile,
+  "controlz-camera-tile": CameraTile,
   "controlz-other-tile": OtherTile,
   "controlz-room-card": RoomCard,
   "controlz-tile-card": TileCard,
   "controlz-room-grid": RoomGrid,
   "controlz-home-grid": HomeGrid,
+  "controlz-favorites-grid": FavoritesGrid,
+  "controlz-automations-grid": AutomationsGrid,
   "controlz-room-icons-card": RoomIconsCard,
   "controlz-scene-strip": SceneStrip,
   "controlz-view-menu": ViewMenu,
@@ -81,9 +91,11 @@ for (const [tag, ctor] of Object.entries(ELEMENTS)) {
 window.customCards = window.customCards || [];
 window.customCards.push(
   { type: "controlz-room-card", name: "ControlZ Room", description: "ControlZ room master tile for an area (lights, outlets, coverings).", preview: true },
-  { type: "controlz-tile-card", name: "ControlZ Tile", description: "ControlZ device tile (light, cover, sensor, security, scene).", preview: true },
+  { type: "controlz-tile-card", name: "ControlZ Tile", description: "ControlZ device tile (light, cover, thermostat, fan, sensor, security, camera, scene, automation).", preview: true },
   { type: "controlz-room-grid", name: "ControlZ Room Page", description: "Full ControlZ room: master tile plus sectioned device tiles." },
-  { type: "controlz-home-grid", name: "ControlZ All Rooms", description: "Security banner plus a room tile for every area." },
+  { type: "controlz-home-grid", name: "ControlZ All Rooms", description: "Security banner, All / On / Off filter, maintenance report and a room tile for every area." },
+  { type: "controlz-favorites-grid", name: "ControlZ Favorites", description: "Your favorite rooms, scenes and devices (saved per Home Assistant user)." },
+  { type: "controlz-automations-grid", name: "ControlZ Automations", description: "Every automation by room: run, enable, edit, duplicate and delete." },
   { type: "controlz-rooms-app", name: "ControlZ Rooms (sidebar)", description: "Room sidebar with badges plus the selected room — use in a panel view." },
   { type: "controlz-room-icons-card", name: "ControlZ Room Icons", description: "Room icon each area resolves to, plus the searchable ControlZ room icon registry." }
 );

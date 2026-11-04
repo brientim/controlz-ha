@@ -19,6 +19,21 @@ import {
   securityView,
   siblingSensor,
   sortedAreas,
+  alarmView,
+  automationGroups,
+  cameraView,
+  climateView,
+  fanView,
+  favoriteAreas,
+  favoriteItems,
+  formatTemp,
+  itemsOn,
+  lightsOffTargets,
+  maintenanceReport,
+  orderItems,
+  roomIsOn,
+  roomReadings,
+  stepTarget,
 } from "../src/model.js";
 
 const hass = makeFixture();
@@ -68,7 +83,7 @@ test("areas sort by floor level, then name, with explicit order first", () => {
 
 test("room sections follow ControlZ order", () => {
   const sections = groupBySection(entitiesForArea(hass, "office"));
-  assert.deepEqual(sections.map((s) => s.id), ["scenes", "lights", "coverings", "security", "sensors"]);
+  assert.deepEqual(sections.map((s) => s.id), ["scenes", "lights", "coverings", "security", "sensors", "automations"]);
 });
 
 test("green badge counts illumination only; outlets are orange", () => {
@@ -132,7 +147,133 @@ test("security views", () => {
     state: "armed_away",
     attributes: { code_format: "number" },
   });
-  assert.equal(coded.action.moreInfo, true);
+  assert.equal(coded.action.keypad, true);
+  assert.equal(coded.action.label, "DISARM");
+  const codedDisarmed = securityView("alarm_control_panel.house", { state: "disarmed", attributes: { code_format: "number" } });
+  assert.equal(codedDisarmed.action.keypad, true);
+  const armWithoutCode = securityView("alarm_control_panel.house", {
+    state: "disarmed", attributes: { code_format: "number", code_arm_required: false },
+  });
+  assert.equal(armWithoutCode.action.service, "alarm_arm_away");
+});
+
+test("alarm keypad: arm modes from supported features, code rules", () => {
+  assert.deepEqual(alarmView({ state: "disarmed", attributes: {} }).modes.map((m) => m.label), ["Away", "Home"]);
+  const panel = alarmView({ state: "armed_night", attributes: { supported_features: 1 | 4 | 32, code_format: "text", code_arm_required: false } });
+  assert.deepEqual(panel.modes.map((m) => m.service), ["alarm_arm_home", "alarm_arm_night", "alarm_arm_vacation"]);
+  assert.equal(panel.codeFormat, "text");
+  assert.equal(panel.armNeedsCode, false);
+  assert.equal(panel.disarmNeedsCode, true);
+  assert.equal(panel.armed, true);
+});
+
+test("new tile kinds and sections", () => {
+  assert.equal(kindOf("automation.office_lights_at_sunset"), KIND.AUTOMATION);
+  assert.equal(kindOf("climate.living_room_thermostat"), KIND.CLIMATE);
+  assert.equal(kindOf("fan.bedroom_1_ceiling_fan"), KIND.FAN);
+  assert.equal(kindOf("camera.front_door"), KIND.CAMERA);
+  const lounge = groupBySection(entitiesForArea(hass, "living_room")).map((s) => s.id);
+  assert.deepEqual(lounge, ["scenes", "lights", "coverings", "climate", "sensors", "automations", "other"]);
+  const scenes = groupBySection(entitiesForArea(hass, "office")).find((s) => s.id === "scenes");
+  assert.equal(scenes.items.some((i) => i.entity_id.startsWith("automation.")), false);
+});
+
+test("thermostat view and setpoint steps", () => {
+  const view = climateView(hass.states["climate.living_room_thermostat"]);
+  assert.equal(view.badge, "HEATING");
+  assert.equal(view.heating, true);
+  assert.equal(view.target, 21);
+  assert.equal(view.current, 19.5);
+  assert.equal(view.range, false);
+  assert.equal(stepTarget(21, 1, view), 21.5);
+  assert.equal(stepTarget(35, 1, view), 35);
+  assert.equal(stepTarget(7.2, -1, view), 7);
+  assert.equal(stepTarget(70, 1, { step: 1, min: 45, max: 95 }), 71);
+  const range = climateView({ state: "heat_cool", attributes: { target_temp_low: 19, target_temp_high: 24, hvac_action: "idle" } });
+  assert.equal(range.range, true);
+  assert.equal(range.badge, "AUTO");
+  assert.equal(climateView({ state: "unavailable", attributes: {} }).badge, "OFFLINE");
+  assert.equal(formatTemp(21.25), "21.3°");
+  assert.equal(formatTemp(null), "—");
+});
+
+test("fan and camera views", () => {
+  const fan = fanView(hass.states["fan.bedroom_1_ceiling_fan"]);
+  assert.equal(fan.badge, "ON · 50%");
+  assert.equal(fan.speed, true);
+  assert.equal(fan.step, 25);
+  assert.equal(fan.oscillate, true);
+  assert.deepEqual(fan.presets, ["breeze", "sleep"]);
+  assert.equal(fanView({ state: "off", attributes: {} }).badge, "OFF");
+  const cam = cameraView(hass.states["camera.front_door"]);
+  assert.equal(cam.badge, "IDLE");
+  assert.ok(cam.picture.startsWith("data:image/svg+xml"));
+  assert.equal(cameraView({ state: "unavailable", attributes: {} }).picture, null);
+});
+
+test("favorites: existing devices with tiles in the user's order, hidden ones dropped", () => {
+  const items = favoriteItems(hass, ["light.kitchen_sink_light", "lock.front_door", "sensor.office_motion_battery", "light.gone", "switch.kitchen_kettle"],
+    new Set(["switch.kitchen_kettle"]));
+  assert.deepEqual(items.map((i) => i.entity_id), ["light.kitchen_sink_light", "lock.front_door"]);
+  assert.deepEqual(favoriteAreas(hass, ["office", "garage", "nowhere"]).map((a) => a.area_id), ["office", "garage"]);
+  assert.deepEqual(favoriteAreas(hass, ["office", "garage"], { hide: ["garage"] }).map((a) => a.area_id), ["office"]);
+});
+
+test("saved tile order: listed devices first, the rest keep their order", () => {
+  const items = ["a", "b", "c", "d"].map((id) => ({ entity_id: id }));
+  assert.deepEqual(orderItems(items, ["c", "a"]).map((i) => i.entity_id), ["c", "a", "b", "d"]);
+  assert.deepEqual(orderItems(items, ["gone", "d"]).map((i) => i.entity_id), ["d", "a", "b", "c"]);
+  assert.equal(orderItems(items, []), items);
+  const office = groupBySection(orderItems(entitiesForArea(hass, "office"), ["light.office_desk_lamp", "scene.office_relax"]));
+  assert.deepEqual(office.find((s) => s.id === "lights").items.map((i) => i.entity_id),
+    ["light.office_desk_lamp", "light.office_colour_light", "switch.office_light_switch"]);
+  assert.equal(office.find((s) => s.id === "scenes").items[0].entity_id, "scene.office_relax");
+});
+
+test("on now and all lights off leave outlets alone", () => {
+  const kitchen = entitiesForArea(hass, "kitchen");
+  assert.deepEqual(itemsOn(hass, kitchen).map((i) => i.entity_id), ["light.kitchen_bench_light", "switch.kitchen_kettle", "light.kitchen_stove_light"]);
+  const office = entitiesForArea(hass, "office");
+  const targets = lightsOffTargets(hass, [...kitchen, ...office]);
+  assert.deepEqual(targets.light.sort(), ["light.kitchen_bench_light", "light.kitchen_stove_light", "light.office_colour_light", "light.office_desk_lamp"]);
+  assert.deepEqual(targets.switch, ["switch.office_light_switch"]);
+  assert.equal(targets.count, 5);
+  assert.equal(roomIsOn(roomSummary(hass, kitchen)), true);
+  assert.equal(roomIsOn(roomSummary(hass, entitiesForArea(hass, "living_room"))), false);
+});
+
+test("maintenance report: low batteries (diagnostic included) and offline devices", () => {
+  const report = maintenanceReport(hass);
+  assert.deepEqual(report.lowBattery.map((i) => [i.name, i.level, i.area]), [["Garage Side Lock", 12, "Garage"]]);
+  assert.deepEqual(report.unavailable.map((i) => i.entity_id), ["light.mums_bedside_lamp"]);
+  assert.equal(report.count, 2);
+  assert.equal(maintenanceReport(hass, { threshold: 90 }).lowBattery.length, 3);
+  assert.equal(maintenanceReport(hass, { exclude: ["light.mums_bedside_lamp"] }).unavailable.length, 0);
+  const low = structuredClone(hass);
+  low.states["binary_sensor.front_door_battery_low"] = { state: "on", attributes: { friendly_name: "Front Door Battery", device_class: "battery" } };
+  low.entities["binary_sensor.front_door_battery_low"] = { area_id: "entrance", device_id: null };
+  assert.equal(maintenanceReport(low).lowBattery[0].level, null);
+});
+
+test("room readings: sensors, then motion thermometers, then thermostats", () => {
+  assert.equal(roomReadings(hass, entitiesForArea(hass, "office")).text, "22.4°C");
+  assert.equal(roomReadings(hass, entitiesForArea(hass, "kitchen")).text, "💧54%");
+  assert.equal(roomReadings(hass, entitiesForArea(hass, "kitchen")).humidity, "54%");
+  assert.equal(roomReadings(hass, entitiesForArea(hass, "living_room")).temperature, "21°C");
+  const noMotionTemp = structuredClone(hass);
+  delete noMotionTemp.states["sensor.lounge_motion_temperature"];
+  assert.equal(roomReadings(noMotionTemp, entitiesForArea(noMotionTemp, "living_room")).temperature, "19.5°C");
+  assert.equal(roomReadings(hass, entitiesForArea(hass, "garage")).text, "");
+});
+
+test("automations grouped by room, then No room", () => {
+  const groups = automationGroups(hass);
+  assert.deepEqual(groups.map((g) => g.name), ["Living Room", "Office", "No room"]);
+  assert.deepEqual(groups.at(-1).items.map((i) => i.entity_id), ["automation.leak_alert"]);
+  assert.equal(automationGroups(hass, { hideEntities: new Set(["automation.leak_alert"]) }).length, 2);
+  const yaml = structuredClone(hass);
+  yaml.states["automation.yaml_only"] = { state: "on", attributes: { friendly_name: "YAML Only" } };
+  assert.ok(automationGroups(yaml).at(-1).items.some((i) => i.entity_id === "automation.yaml_only"));
 });
 
 test("security banner names devices: red beats amber beats motion beats secure", () => {

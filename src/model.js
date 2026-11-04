@@ -12,6 +12,10 @@ export const KIND = Object.freeze({
   SENSOR: "sensor",
   SECURITY: "security",
   SCENE: "scene",
+  AUTOMATION: "automation",
+  CLIMATE: "climate",
+  FAN: "fan",
+  CAMERA: "camera",
   OTHER: "other",
 });
 
@@ -20,8 +24,11 @@ export const SECTIONS = Object.freeze([
   { id: "scenes", title: "Scenes", kinds: [KIND.SCENE] },
   { id: "lights", title: "Lights", kinds: [KIND.LIGHT, KIND.SWITCH, KIND.OUTLET] },
   { id: "coverings", title: "Window Coverings", kinds: [KIND.COVER] },
+  { id: "climate", title: "Climate", kinds: [KIND.CLIMATE, KIND.FAN] },
   { id: "security", title: "Security", kinds: [KIND.SECURITY] },
+  { id: "cameras", title: "Cameras", kinds: [KIND.CAMERA] },
   { id: "sensors", title: "Sensors", kinds: [KIND.MOTION, KIND.SENSOR] },
+  { id: "automations", title: "Automations", kinds: [KIND.AUTOMATION] },
   { id: "other", title: "Other", kinds: [KIND.OTHER] },
 ]);
 
@@ -61,8 +68,6 @@ const SENSOR_BADGES = {
   power: "POWER",
 };
 const OTHER_DOMAINS = new Set([
-  "fan",
-  "climate",
   "media_player",
   "humidifier",
   "vacuum",
@@ -112,8 +117,15 @@ export function classifyEntity(entityId, stateObj, entry) {
       return SENSOR_CLASSES.has(dc) ? KIND.SENSOR : null;
     case "scene":
     case "script":
-    case "automation":
       return KIND.SCENE;
+    case "automation":
+      return KIND.AUTOMATION;
+    case "climate":
+      return KIND.CLIMATE;
+    case "fan":
+      return KIND.FAN;
+    case "camera":
+      return KIND.CAMERA;
     default:
       return OTHER_DOMAINS.has(domain) ? KIND.OTHER : null;
   }
@@ -336,22 +348,21 @@ export function securityView(entityId, stateObj) {
   }
 
   if (domain === "alarm_control_panel") {
-    const needsCode = !!stateObj.attributes?.code_format;
-    if (state === "disarmed")
+    const alarm = alarmView(stateObj);
+    const disarm = alarm.disarmNeedsCode
+      ? { label: "DISARM", keypad: true }
+      : { label: "DISARM", domain: "alarm_control_panel", service: "alarm_disarm", confirm: state !== "triggered" };
+    if (state === "disarmed") {
+      const away = alarm.modes.find((m) => m.service === "alarm_arm_away") || alarm.modes[0];
       return { badge: "DISARMED", secure: false, insecure: false, icon: "shield",
-        action: needsCode
-          ? { label: "ARM", moreInfo: true }
-          : { label: "ARM AWAY", domain: "alarm_control_panel", service: "alarm_arm_away" } };
+        action: alarm.armNeedsCode || !away
+          ? { label: "ARM", keypad: true }
+          : { label: `ARM ${away.label.toUpperCase()}`, domain: "alarm_control_panel", service: away.service } };
+    }
     if (state === "triggered")
-      return { badge: "TRIGGERED", secure: false, insecure: true, icon: "bell",
-        action: needsCode
-          ? { label: "DISARM", moreInfo: true }
-          : { label: "DISARM", domain: "alarm_control_panel", service: "alarm_disarm" } };
-    if (state.startsWith("armed"))
-      return { badge: upper(state), secure: true, insecure: false, icon: "shield",
-        action: needsCode
-          ? { label: "DISARM", moreInfo: true }
-          : { label: "DISARM", domain: "alarm_control_panel", service: "alarm_disarm", confirm: true } };
+      return { badge: "TRIGGERED", secure: false, insecure: true, icon: "bell", action: disarm };
+    if (state.startsWith("armed") || state === "arming" || state === "pending")
+      return { badge: upper(state), secure: state.startsWith("armed"), insecure: false, icon: "shield", action: disarm };
     return { badge: upper(state), secure: false, insecure: false, icon: "shield", action: null };
   }
 
@@ -381,6 +392,35 @@ export function securityView(entityId, stateObj) {
     insecure: on,
     icon: isDoor ? "door" : on ? "contactOpen" : "contactClosed",
     action: null,
+  };
+}
+
+const ALARM_MODES = [
+  { bit: 2, service: "alarm_arm_away", label: "Away" },
+  { bit: 1, service: "alarm_arm_home", label: "Home" },
+  { bit: 4, service: "alarm_arm_night", label: "Night" },
+  { bit: 32, service: "alarm_arm_vacation", label: "Vacation" },
+  { bit: 16, service: "alarm_arm_custom_bypass", label: "Bypass" },
+];
+
+/**
+ * Alarm panel keypad model: arm modes from `supported_features` (Home and Away when the panel
+ * does not say), and whether arming / disarming needs a code (`code_format`, `code_arm_required`).
+ */
+export function alarmView(stateObj) {
+  const attrs = stateObj?.attributes || {};
+  const features = attrs.supported_features;
+  const modes = typeof features === "number"
+    ? ALARM_MODES.filter((m) => features & m.bit)
+    : ALARM_MODES.filter((m) => m.bit <= 2);
+  const codeFormat = attrs.code_format === "number" || attrs.code_format === "text" ? attrs.code_format : null;
+  return {
+    state: stateObj?.state,
+    modes: modes.map(({ service, label }) => ({ service, label })),
+    codeFormat,
+    armNeedsCode: !!codeFormat && attrs.code_arm_required !== false,
+    disarmNeedsCode: !!codeFormat,
+    armed: !!stateObj?.state?.startsWith("armed") || ["arming", "pending", "triggered"].includes(stateObj?.state),
   };
 }
 
@@ -469,4 +509,259 @@ export function securityReport(hass, { include = [], exclude = [] } = {}) {
 export function securityBanner(hass, options) {
   const { level, text } = securityReport(hass, options);
   return { level, text };
+}
+
+const upperWords = (s) => String(s ?? "").replace(/_/g, " ").toUpperCase();
+const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/** `21.5°` (unit symbol dropped on tiles, where space is tight) or `—`. */
+export function formatTemp(value, unit = "") {
+  const n = num(value);
+  if (n == null) return "—";
+  return `${Math.round(n * 10) / 10}°${unit.replace("°", "")}`;
+}
+
+/**
+ * Thermostat tile face (ControlZ thermostat tiles): HVAC mode / action badge, current and
+ * target temperatures (single target or a low–high range), step and limits for the +/− buttons.
+ */
+export function climateView(stateObj, unit = "°C") {
+  const a = stateObj?.attributes || {};
+  const offline = isUnavailable(stateObj);
+  const mode = stateObj?.state;
+  const action = a.hvac_action;
+  const fahrenheit = /F/.test(unit);
+  const step = num(a.target_temp_step) || (fahrenheit ? 1 : 0.5);
+  const active = !offline && ["heating", "cooling", "drying", "fan", "preheating", "defrosting"].includes(action);
+  const badge = offline
+    ? "OFFLINE"
+    : action && !["idle", "off"].includes(action) ? upperWords(action)
+    : mode === "heat_cool" ? "AUTO" : upperWords(mode);
+  const range = num(a.target_temp_low) != null && num(a.target_temp_high) != null && num(a.temperature) == null;
+  return {
+    offline,
+    mode,
+    action: action || null,
+    active,
+    heating: action === "heating" || action === "preheating",
+    cooling: action === "cooling",
+    off: mode === "off",
+    badge,
+    current: num(a.current_temperature),
+    target: num(a.temperature),
+    low: num(a.target_temp_low),
+    high: num(a.target_temp_high),
+    range,
+    step,
+    min: num(a.min_temp) ?? (fahrenheit ? 45 : 7),
+    max: num(a.max_temp) ?? (fahrenheit ? 95 : 35),
+    modes: Array.isArray(a.hvac_modes) ? a.hvac_modes : [],
+    presets: Array.isArray(a.preset_modes) ? a.preset_modes : [],
+    preset: a.preset_mode ?? null,
+    fanModes: Array.isArray(a.fan_modes) ? a.fan_modes : [],
+    fanMode: a.fan_mode ?? null,
+    humidity: num(a.current_humidity),
+    unit,
+  };
+}
+
+/** Next setpoint after a +/− press: snapped to the step, clamped to the thermostat's limits. */
+export function stepTarget(value, delta, { step = 0.5, min = 7, max = 35 } = {}) {
+  const base = num(value) ?? (min + max) / 2;
+  const next = Math.round((base + delta * step) / step) * step;
+  return Math.round(Math.min(max, Math.max(min, next)) * 100) / 100;
+}
+
+const FAN_SET_SPEED = 1;
+const FAN_OSCILLATE = 2;
+const FAN_DIRECTION = 4;
+const FAN_PRESET = 8;
+
+/** Fan tile face: on/off, speed percentage (when supported), presets, oscillation, direction. */
+export function fanView(stateObj) {
+  const a = stateObj?.attributes || {};
+  const features = a.supported_features ?? 0;
+  const on = isOn(stateObj);
+  const pct = num(a.percentage);
+  const offline = isUnavailable(stateObj);
+  return {
+    on,
+    offline,
+    percentage: pct ?? 0,
+    step: num(a.percentage_step) || 1,
+    speed: (features & FAN_SET_SPEED) !== 0,
+    oscillate: (features & FAN_OSCILLATE) !== 0,
+    oscillating: !!a.oscillating,
+    direction: (features & FAN_DIRECTION) !== 0 ? a.direction || "forward" : null,
+    presets: (features & FAN_PRESET) !== 0 && Array.isArray(a.preset_modes) ? a.preset_modes : [],
+    preset: a.preset_mode ?? null,
+    badge: offline ? "OFFLINE" : !on ? "OFF" : pct != null && (features & FAN_SET_SPEED) ? `ON · ${pct}%` : a.preset_mode ? `ON · ${upperWords(a.preset_mode)}` : "ON",
+  };
+}
+
+/** Camera tile face: snapshot path (Home Assistant camera proxy, token included) and state chip. */
+export function cameraView(stateObj) {
+  const offline = isUnavailable(stateObj);
+  return {
+    offline,
+    picture: offline ? null : stateObj?.attributes?.entity_picture || null,
+    badge: offline ? "OFFLINE" : upperWords(stateObj?.state || "idle"),
+    live: stateObj?.state === "streaming" || stateObj?.state === "recording",
+  };
+}
+
+/**
+ * Items in a saved tile order (entity ids): listed ones first in that order, the rest keep their
+ * current order (by name). Sections are grouped afterwards, so the order applies within each section.
+ */
+export function orderItems(items, order = []) {
+  if (!order?.length) return items;
+  const rank = new Map(order.map((id, i) => [id, i]));
+  return items
+    .map((item, i) => ({ item, i, r: rank.has(item.entity_id) ? rank.get(item.entity_id) : Number.MAX_SAFE_INTEGER }))
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .map((x) => x.item);
+}
+
+/** Favorite devices that still get a tile, minus hidden ones, in the user's favorites order. */
+export function favoriteItems(hass, entityIds = [], hiddenEntities = new Set()) {
+  const out = [];
+  for (const entityId of new Set(entityIds)) {
+    if (hiddenEntities.has(entityId)) continue;
+    const kind = classifyEntity(entityId, hass?.states?.[entityId], hass?.entities?.[entityId]);
+    if (kind) out.push({ entity_id: entityId, kind });
+  }
+  return out;
+}
+
+/** Favorite rooms that still exist and are not hidden, in the user's favorites order. */
+export function favoriteAreas(hass, areaIds = [], { hide = [] } = {}) {
+  const hidden = new Set(hide);
+  return [...new Set(areaIds)].map((id) => hass?.areas?.[id]).filter((a) => a && !hidden.has(a.area_id));
+}
+
+const ON_KINDS = new Set([KIND.LIGHT, KIND.SWITCH, KIND.OUTLET, KIND.FAN]);
+
+/** ControlZ "All On" filter: lights, switches, outlets and fans that are on right now. */
+export function itemsOn(hass, items) {
+  return items.filter((i) => ON_KINDS.has(i.kind) && isOn(hass?.states?.[i.entity_id]));
+}
+
+/** "All lights off": lights and wall switches that are on (outlets such as a kettle are left alone). */
+export function lightsOffTargets(hass, items) {
+  const on = items.filter((i) => (i.kind === KIND.LIGHT || i.kind === KIND.SWITCH) && isOn(hass?.states?.[i.entity_id]));
+  return {
+    light: on.filter((i) => i.kind === KIND.LIGHT).map((i) => i.entity_id),
+    switch: on.filter((i) => i.kind === KIND.SWITCH).map((i) => i.entity_id),
+    count: on.length,
+  };
+}
+
+/** Room "on" for the All Rooms filter: illumination or outlets on (open coverings do not count). */
+export const roomIsOn = (summary) => summary.lightsOn > 0 || summary.outletsOn > 0;
+
+/**
+ * Maintenance report (ControlZ Low Battery Report): batteries under `threshold` % (or a battery
+ * binary sensor reporting low) and devices that would get a tile but are unavailable.
+ * Battery sensors are usually diagnostic entities, so those are included; hidden and disabled ones are not.
+ */
+export function maintenanceReport(hass, { threshold = 20, exclude = [] } = {}) {
+  const skip = new Set(exclude || []);
+  const lowBattery = [];
+  const unavailable = [];
+  for (const [entityId, entry] of Object.entries(hass?.entities || {})) {
+    if (skip.has(entityId) || entry.hidden || entry.hidden_by || entry.disabled_by) continue;
+    const stateObj = hass.states?.[entityId];
+    if (!stateObj) continue;
+    const areaId = areaOfEntity(hass, entityId);
+    const where = areaId ? hass.areas?.[areaId]?.name || areaId : "";
+    const deviceName = entry.device_id ? hass.devices?.[entry.device_id]?.name_by_user || hass.devices?.[entry.device_id]?.name : null;
+    const dc = stateObj.attributes?.device_class;
+    const domain = domainOf(entityId);
+    if (dc === "battery" && domain === "sensor" && !isUnavailable(stateObj)) {
+      const level = Number(stateObj.state);
+      if (Number.isFinite(level) && level < threshold) {
+        lowBattery.push({ entity_id: entityId, name: deviceName || friendlyName(hass, entityId), level: Math.round(level), area: where });
+      }
+      continue;
+    }
+    if (dc === "battery" && domain === "binary_sensor") {
+      if (stateObj.state === "on") lowBattery.push({ entity_id: entityId, name: deviceName || friendlyName(hass, entityId), level: null, area: where });
+      continue;
+    }
+    if (stateObj.state === "unavailable" && classifyEntity(entityId, stateObj, entry)) {
+      unavailable.push({ entity_id: entityId, name: friendlyName(hass, entityId), area: where });
+    }
+  }
+  lowBattery.sort((a, b) => (a.level ?? -1) - (b.level ?? -1) || a.name.localeCompare(b.name));
+  unavailable.sort((a, b) => a.name.localeCompare(b.name));
+  return { lowBattery, unavailable, count: lowBattery.length + unavailable.length, threshold };
+}
+
+const average = (values) => values.reduce((a, b) => a + b, 0) / values.length;
+
+/**
+ * Room readings for the room tile and header (ControlZ room sensor banner): average temperature
+ * and humidity from the room's sensors, motion sensors' own thermometers, then thermostats.
+ */
+export function roomReadings(hass, items, unit = "°C") {
+  const states = hass?.states || {};
+  const temps = [];
+  const hums = [];
+  let tempUnit = null;
+  const addTemp = (id) => {
+    const s = states[id];
+    const n = Number(s?.state);
+    if (isUnavailable(s) || !Number.isFinite(n)) return;
+    temps.push(n);
+    tempUnit ||= s.attributes?.unit_of_measurement || unit;
+  };
+  for (const item of items) {
+    const s = states[item.entity_id];
+    const dc = s?.attributes?.device_class;
+    if (item.kind === KIND.SENSOR && dc === "temperature") addTemp(item.entity_id);
+    if (item.kind === KIND.SENSOR && dc === "humidity" && Number.isFinite(Number(s.state)) && !isUnavailable(s)) hums.push(Number(s.state));
+  }
+  if (!temps.length) {
+    for (const item of items.filter((i) => i.kind === KIND.MOTION)) {
+      const sibling = siblingSensor(hass, item.entity_id, "temperature");
+      if (sibling) addTemp(sibling);
+    }
+  }
+  if (!temps.length) {
+    for (const item of items.filter((i) => i.kind === KIND.CLIMATE)) {
+      const current = num(states[item.entity_id]?.attributes?.current_temperature);
+      if (current != null) {
+        temps.push(current);
+        tempUnit ||= unit;
+      }
+    }
+  }
+  const temperature = temps.length ? `${Math.round(average(temps) * 10) / 10}${tempUnit || unit}` : null;
+  const humidity = hums.length ? `${Math.round(average(hums))}%` : null;
+  return { temperature, humidity, text: [temperature, humidity && `💧${humidity}`].filter(Boolean).join(" · ") };
+}
+
+/**
+ * Automations grouped by room for the Automations view: one group per area (dashboard room
+ * order), then "No room". Hidden automations are left out unless `includeHidden`.
+ */
+export function automationGroups(hass, { order = [], hideEntities = new Set(), includeHidden = false } = {}) {
+  const byArea = new Map();
+  // YAML automations without an `id` have no registry entry, so states are scanned as well.
+  const ids = new Set([...Object.keys(hass?.entities || {}), ...Object.keys(hass?.states || {}).filter((id) => id.startsWith("automation."))]);
+  for (const entityId of ids) {
+    const entry = hass.entities?.[entityId];
+    if (classifyEntity(entityId, hass.states?.[entityId], entry) !== KIND.AUTOMATION) continue;
+    if (!includeHidden && hideEntities.has(entityId)) continue;
+    const areaId = areaOfEntity(hass, entityId) || "";
+    if (!byArea.has(areaId)) byArea.set(areaId, []);
+    byArea.get(areaId).push({ entity_id: entityId, kind: KIND.AUTOMATION });
+  }
+  const byName = (a, b) => friendlyName(hass, a.entity_id).localeCompare(friendlyName(hass, b.entity_id));
+  const groups = sortedAreas(hass, { order })
+    .filter((a) => byArea.has(a.area_id))
+    .map((a) => ({ area_id: a.area_id, name: a.name, items: byArea.get(a.area_id).sort(byName) }));
+  if (byArea.has("")) groups.push({ area_id: "", name: "No room", items: byArea.get("").sort(byName) });
+  return groups;
 }

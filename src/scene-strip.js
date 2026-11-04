@@ -5,7 +5,6 @@ import { TOKENS } from "./styles.js";
 const RUN = {
   scene: ["scene", "turn_on", "🎬"],
   script: ["script", "turn_on", "📜"],
-  automation: ["automation", "trigger", "⚙️"],
 };
 const RAN_FLASH_MS = 1200;
 
@@ -32,8 +31,8 @@ const STYLES = `
 `;
 
 /**
- * Compact scene row for a room page (ControlZ scene header): one chip per scene / script /
- * automation; tap runs it, right-click (long-press on Android) opens Home Assistant's more-info.
+ * Compact scene row for a room page (ControlZ scene header): one chip per scene / script;
+ * tap runs it, right-click (long-press on Android) opens Home Assistant's more-info.
  */
 export class SceneStrip extends CzElement {
   styles() {
@@ -50,12 +49,11 @@ export class SceneStrip extends CzElement {
         label: sceneLabel(friendlyName(this._hass, entityId), areaName),
         glyph: (RUN[domain] || RUN.script)[2],
         running: domain === "script" && stateObj?.state === "on",
-        disabled: domain === "automation" && stateObj?.state === "off",
         ran: this._ran === entityId,
       };
     });
     const html = `<div class="strip" role="group" aria-label="Scenes">${items.map((i) => `
-      <button type="button" class="chip${i.running ? " running" : ""}${i.ran ? " ran" : ""}${i.disabled ? " disabled" : ""}"
+      <button type="button" class="chip${i.running ? " running" : ""}${i.ran ? " ran" : ""}"
         data-action="run" data-entity="${escapeHtml(i.id)}" title="Run ${escapeHtml(i.label)} (right-click for details)">
         <span class="glyph" aria-hidden="true">${i.glyph}</span>
         <span class="label">${escapeHtml(i.label)}</span>
