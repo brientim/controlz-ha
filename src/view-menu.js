@@ -5,8 +5,11 @@ import {
 
 const escapeAttr = (value) =>
   String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+import { openHelpSheet } from "./help.js";
 import { setEditing } from "./hidden.js";
+import { SECURITY_SETTINGS_EVENT } from "./security-settings.js";
 import { TOKENS } from "./styles.js";
+import { VERSION } from "./version.js";
 
 const LABELS = { large: "Large", thin: "Thin", compact: "Compact", tabs: "Tabs", sidebar: "Sidebar" };
 
@@ -49,6 +52,15 @@ const STYLES = `
   }
   .reset { width: 100%; border: none; background: none; color: var(--cz-text-secondary); font: inherit; font-size: 0.78rem; padding: 6px; cursor: pointer; text-decoration: underline; }
   .note { font-size: 0.72rem; color: var(--cz-text-secondary); margin: 0 4px 6px; }
+  .about {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    margin: 4px -10px -10px; padding: 8px 14px; border-top: 1px solid var(--cz-border);
+    font-size: 0.75rem; color: var(--cz-text-secondary);
+  }
+  .help-btn {
+    border: 1px solid var(--cz-border); background: var(--cz-bg-secondary); color: var(--cz-text); border-radius: 999px;
+    padding: 4px 12px; font: inherit; font-size: 0.78rem; font-weight: 600; cursor: pointer;
+  }
 `;
 
 const ICON = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg>`;
@@ -56,7 +68,9 @@ const ICON = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><p
 /**
  * "View" menu: tile size (applies live), room navigation (reloads, because the dashboard
  * strategy picks the layout), start page, and edit mode (favorites for everyone; hide and
- * reorder for admins). Choices are stored per device; attributes give the dashboard defaults.
+ * reorder for admins), the security banner placement (admins; the page it sits on opens the
+ * settings), then the version and Help. Choices are stored per device; attributes give
+ * the dashboard defaults.
  *   <controlz-view-menu default-size="large" default-nav="tabs" show-nav editable admin page-id="room-office" page-name="Office">
  */
 export class ViewMenu extends HTMLElement {
@@ -149,6 +163,8 @@ export class ViewMenu extends HTMLElement {
         ${custom ? `<button type="button" class="reset" data-reset>Use dashboard defaults</button>` : ""}
         ${startHtml}
         ${this.hasAttribute("editable") ? `<button type="button" class="edit-btn" data-edit>${admin ? "♥ 👁 Edit rooms &amp; favorites…" : "♥ Edit favorites…"}</button>` : ""}
+        ${this.hasAttribute("editable") && admin ? `<button type="button" class="edit-btn" data-security>🛡 Security banner…</button>` : ""}
+        <div class="about"><span>ControlZ HA ${escapeAttr(VERSION)}</span><button type="button" class="help-btn" data-help>? Help</button></div>
       </div>` : ""}`;
   }
 
@@ -164,6 +180,18 @@ export class ViewMenu extends HTMLElement {
       this._open = false;
       this._render();
       setEditing(true);
+      return;
+    }
+    if (target.hasAttribute("data-security")) {
+      this._open = false;
+      this._render();
+      this.dispatchEvent(new CustomEvent(SECURITY_SETTINGS_EVENT, { bubbles: true, composed: true }));
+      return;
+    }
+    if (target.hasAttribute("data-help")) {
+      this._open = false;
+      this._render();
+      openHelpSheet(this);
       return;
     }
     const navBefore = effectiveNav(this.getAttribute("default-nav"));

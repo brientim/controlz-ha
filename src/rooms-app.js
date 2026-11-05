@@ -1,12 +1,13 @@
 import { areaItems, visibleItems } from "./area-cache.js";
 import { escapeHtml } from "./base.js";
 import { FAVORITES_EVENT, isFavorite, loadFavorites, toggleFavorite } from "./favorites.js";
-import { hiddenOptions, iconOptions, viewMenuHtml } from "./grids.js";
+import { hiddenOptions, iconOptions, securityOptions, viewMenuHtml } from "./grids.js";
 import { EDIT_EVENT, HIDDEN_EVENT, areasOrder, hiddenLists, isEditing, movedOrder, setAreasOrder, setHidden } from "./hidden.js";
 import { ICONS } from "./icons.js";
 import { automationGroups, roomSummary, securityReport, sortedAreas } from "./model.js";
 import { takeStartPage } from "./prefs.js";
 import { DEFAULT_ROOM_ICON, resolveAreaIcon, roomIconSvg } from "./room-icons.js";
+import { SECURITY_SETTINGS_EVENT, openSecuritySettings } from "./security-settings.js";
 import { TOKENS } from "./styles.js";
 
 const ALL = "__all";
@@ -162,6 +163,10 @@ export class RoomsApp extends HTMLElement {
       this._sideSig = null;
       this._sync();
     };
+    this.shadowRoot.addEventListener(SECURITY_SETTINGS_EVENT, (ev) => {
+      ev.stopPropagation();
+      openSecuritySettings(this);
+    });
     this.shadowRoot.addEventListener("controlz-select-area", (ev) => {
       ev.stopPropagation();
       this._select(ev.detail.area);
@@ -372,7 +377,7 @@ export class RoomsApp extends HTMLElement {
         page.setConfig({ ...shared, areas_order: this._config.areas_order });
       } else if (this._selected) {
         page = document.createElement("controlz-room-grid");
-        page.setConfig({ ...shared, area: this._selected, scenes_style: this._config.scenes_style || "chips" });
+        page.setConfig({ ...shared, ...securityOptions(this._config), area: this._selected, scenes_style: this._config.scenes_style || "chips" });
       } else {
         page = document.createElement("controlz-home-grid");
         page.setConfig({
@@ -380,8 +385,7 @@ export class RoomsApp extends HTMLElement {
           select_rooms: true,
           areas_order: this._config.areas_order,
           hide_areas: this._config.hide_areas,
-          security_include: this._config.security_include,
-          security_exclude: this._config.security_exclude,
+          ...securityOptions(this._config),
           ...(this._config.battery_threshold != null ? { battery_threshold: this._config.battery_threshold } : {}),
           ...(this._config.show_maintenance != null ? { show_maintenance: this._config.show_maintenance } : {}),
         });

@@ -1,6 +1,6 @@
 /**
- * Hide rooms and devices, and room order (dashboard-wide, like ControlZ room / device hiding and
- * Room Order).
+ * Hide rooms and devices, room order and where the security banner shows (dashboard-wide, like
+ * ControlZ room / device hiding and Room Order).
  *
  * Hidden lists and the room order live in the ControlZ dashboard config (`hide_areas`,
  * `hide_entities`, `areas_order` on the `custom:controlz-rooms` strategy), so every device sees
@@ -15,6 +15,7 @@ const STRATEGY_TYPE = "custom:controlz-rooms";
 let override = null;
 let orderOverride = null;
 let entitiesOverride = null;
+let bannerOverride = null;
 let editing = false;
 
 /** Key for automations without a room in `entities_order`. */
@@ -128,6 +129,27 @@ export function movedOrder(shown, id, { delta = 0, beforeId = null } = {}) {
   else to = Math.min(list.length, Math.max(0, from + delta));
   list.splice(to, 0, id);
   return list;
+}
+
+/** Security banner placement: the one saved this session, else the dashboard config's `security_banner` / `security_banner_rooms`. */
+export function securityBannerSettings(config = {}) {
+  if (bannerOverride) return bannerOverride;
+  return { mode: config.security_banner || "all_rooms", rooms: config.security_banner_rooms || [] };
+}
+
+/** Save where the security banner shows (`mode` from SECURITY_BANNER_MODES; `rooms` for "rooms"). */
+export async function setSecurityBanner(hass, { mode, rooms = [] }) {
+  const strategy = await saveStrategy(hass, "change the security banner", (s) => {
+    if (mode === "all_rooms") delete s.security_banner;
+    else s.security_banner = mode;
+    const list = [...new Set(rooms)];
+    if (mode === "rooms" && list.length) s.security_banner_rooms = list;
+    else delete s.security_banner_rooms;
+    return s;
+  });
+  bannerOverride = { mode: strategy.security_banner || "all_rooms", rooms: strategy.security_banner_rooms || [] };
+  window.dispatchEvent(new CustomEvent(HIDDEN_EVENT, { detail: { security_banner: bannerOverride } }));
+  return bannerOverride;
 }
 
 /** True when this page session changed hidden rooms or room order (tabs need a reload to follow). */

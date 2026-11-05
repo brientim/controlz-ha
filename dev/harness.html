@@ -108,6 +108,7 @@
       const saved = JSON.parse(sessionStorage.getItem("controlz-harness-dashboard") || "{}").strategy || {};
       dashboard = await Strategy.generate({
         type: "custom:controlz-rooms", icons_view: true, ...saved,
+        ...(params.get("banner") ? { security_banner: params.get("banner") } : {}),
         tile_size: sizeSelect.value, room_nav: params.get("nav") || "tabs", tile_scale: Number(params.get("scale") || 1),
       }, mock.hass);
       renderView();
@@ -225,9 +226,73 @@
           deepAll().find((t) => t._config.entity.startsWith(tileSheet) && t.onTileClick)?.onTileClick();
           await new Promise((r) => setTimeout(r, 300));
         }
+        const sheetRoot = () => document.querySelector("controlz-sheet")?.shadowRoot;
+        const setField = async (selector, value) => {
+          const el = sheetRoot().querySelector(selector);
+          el.value = value;
+          for (const type of ["input", "change"]) el.dispatchEvent(new Event(type, { bubbles: true, composed: true }));
+          await new Promise((r) => setTimeout(r, 60));
+        };
         if (open === "editor-sheet") {
           deepFind("[data-new-automation]").click();
           await new Promise((r) => setTimeout(r, 100));
+          if (params.get("fill") === "1") {
+            await setField("[data-field=alias]", "Leave the office");
+            sheetRoot().querySelector('[data-action=ed-action][data-kind=room]').click();
+            await new Promise((r) => setTimeout(r, 60));
+            await setField('[data-field="actions.0.area_id"]', "office");
+            await setField('[data-field="actions.0.service"]', "turn_off");
+            sheetRoot().querySelector("[data-action=ed-add-action]").click();
+            await new Promise((r) => setTimeout(r, 60));
+            await setField('[data-field="actions.1.entity_id"]', "lock.front_door");
+            sheetRoot().querySelector("[data-field=alias]").blur();
+            await new Promise((r) => setTimeout(r, 300));
+            sheetRoot().querySelector(".sheet-body").scrollTop = 9999;
+          }
+        }
+        if (open === "help-sheet" || open === "menu-about") {
+          deepFind("controlz-view-menu").shadowRoot.querySelector("[data-toggle]").click();
+          await new Promise((r) => setTimeout(r, 30));
+          if (open === "help-sheet") {
+            deepFind("controlz-view-menu").shadowRoot.querySelector("[data-help]").click();
+            await new Promise((r) => setTimeout(r, 60));
+            const section = params.get("section");
+            if (section) sheetRoot().querySelector(`[data-action=help-go][data-id="${section}"]`)?.click();
+          }
+        }
+        if (open === "security-settings") {
+          deepFind("controlz-view-menu").shadowRoot.querySelector("[data-toggle]").click();
+          await new Promise((r) => setTimeout(r, 30));
+          deepFind("controlz-view-menu").shadowRoot.querySelector("[data-security]").click();
+          await new Promise((r) => setTimeout(r, 60));
+          if (params.get("mode")) sheetRoot().querySelector(`[data-action=sb-mode][data-mode="${params.get("mode")}"]`)?.click();
+          await new Promise((r) => setTimeout(r, 30));
+          for (const id of (params.get("rooms") || "").split(",").filter(Boolean)) {
+            const box = sheetRoot().querySelector(`[data-action=sb-room][value="${id}"]`);
+            if (!box) continue;
+            box.checked = true;
+            box.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+            await new Promise((r) => setTimeout(r, 30));
+          }
+        }
+        if (open === "scene-sheet" || open === "export-sheet") {
+          const chip = deepFind('.chip[data-entity="scene.office_focus"]') || deepFind(".chip[data-entity^='scene.']");
+          chip.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, composed: true, cancelable: true }));
+          await new Promise((r) => setTimeout(r, 400));
+          if (open === "export-sheet") {
+            sheetRoot().querySelector("[data-action=scene-export]").click();
+            await new Promise((r) => setTimeout(r, 60));
+          }
+        }
+        if (open === "import-sheet") {
+          deepFind("[data-import]").click();
+          await new Promise((r) => setTimeout(r, 60));
+          await setField("[data-action=imp-text]", [
+            "- name: Movie night", "  entities:", "    light.office_desk_lamp:", "      state: 'on'", "      brightness: 40",
+            "    cover.office_roller_blind:", "      state: closed", "      current_position: 0",
+            "- alias: Lights off at eleven", "  triggers:", "    - trigger: time", "      at: '23:00:00'",
+            "  actions:", "    - action: light.turn_off", "      target:", "        area_id: office", "",
+          ].join("\n"));
         }
         if (open.endsWith("-sheet")) {
           await new Promise((r) => setTimeout(r, 50));

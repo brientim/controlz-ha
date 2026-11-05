@@ -18,6 +18,8 @@ import { resolveAreaIcon } from "./room-icons.js";
  *       office: [light.desk_lamp, light.ceiling]
  *     security_include: []      # optional: only these entities can raise the security banner
  *     security_exclude: []      # optional: entities that never raise the security banner
+ *     security_banner: all_rooms  # all_rooms | every_room | rooms | off (View → Security banner… edits this)
+ *     security_banner_rooms: []   # with `rooms`: room pages that also show the banner
  *     favorites_view: true      # false = no Favorites view (favorites are per Home Assistant user)
  *     automations_view: true    # false = no Automations view (room pages still list their automations)
  *     battery_threshold: 20     # All Rooms maintenance report: batteries under this % count as low
@@ -52,6 +54,8 @@ export class ControlZRoomsStrategy extends HTMLElement {
     const security = {
       ...(config.security_include ? { security_include: config.security_include } : {}),
       ...(config.security_exclude ? { security_exclude: config.security_exclude } : {}),
+      ...(config.security_banner ? { security_banner: config.security_banner } : {}),
+      ...(config.security_banner_rooms ? { security_banner_rooms: config.security_banner_rooms } : {}),
     };
     const home = {
       ...(config.battery_threshold != null ? { battery_threshold: config.battery_threshold } : {}),
@@ -130,6 +134,7 @@ export class ControlZRoomsStrategy extends HTMLElement {
             type: "custom:controlz-room-grid",
             area: a.area_id,
             ...shared,
+            ...security,
             ...scenes,
           }],
         })),

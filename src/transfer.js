@@ -87,6 +87,7 @@ class ExportSheet extends HostedSheet {
       title: `Export ${this._name}`,
       subtitle: `${label} · ${this._fileName}`,
       body,
+      wide: true,
       footer: `<button type="button" class="btn" data-action="sheet-close">Done</button>`,
     });
   }
@@ -212,7 +213,7 @@ class ImportSheet extends HostedSheet {
     const footer = `
       <button type="button" class="btn ghost" data-action="sheet-close">Cancel</button>
       <button type="button" class="btn" data-action="imp-save" ${this._busy ? "disabled" : ""}>${this._busy || (count > 1 ? `Import ${count}` : "Import")}</button>`;
-    return sheetFrame({ title: "Import scenes & automations", subtitle: "", body, footer });
+    return sheetFrame({ title: "Import scenes & automations", subtitle: "", body, footer, wide: true });
   }
 
   async _loadFile(input) {

@@ -33,6 +33,7 @@ import {
   orderItems,
   roomIsOn,
   roomReadings,
+  showsSecurityBanner,
   stepTarget,
 } from "../src/model.js";
 
@@ -291,6 +292,17 @@ test("security banner names devices: red beats amber beats motion beats secure",
   assert.equal(securityBanner(calm).text, "MOTION — Lounge Motion Sensor");
   calm.states["binary_sensor.lounge_motion"].state = "off";
   assert.equal(securityBanner(calm).level, "secure");
+});
+
+test("security banner placement: All Rooms only, every room, chosen rooms or off", () => {
+  const where = (settings) => [null, "office", "kitchen"].map((area) => showsSecurityBanner(settings, area));
+  assert.deepEqual(where({}), [true, false, false]);
+  assert.deepEqual(where({ mode: "all_rooms" }), [true, false, false]);
+  assert.deepEqual(where({ mode: "every_room" }), [true, true, true]);
+  assert.deepEqual(where({ mode: "rooms", rooms: ["office"] }), [true, true, false]);
+  assert.deepEqual(where({ mode: "rooms" }), [true, false, false]);
+  assert.deepEqual(where({ mode: "off", rooms: ["office"] }), [false, false, false]);
+  assert.deepEqual(where({ mode: "sometimes" }), [true, false, false]);
 });
 
 test("security banner severity mirrors ControlZ", () => {

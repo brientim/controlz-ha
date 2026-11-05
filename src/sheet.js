@@ -44,14 +44,15 @@ export function coverControls({ label, positionable, position }) {
 /**
  * Sheet chrome: title + favorite heart (when `favorite` is a boolean) + close, body, then
  * More details (Home Assistant dialog) and Done — or the owner's own `footer` buttons.
+ * `wide` is for reading content (help, exported YAML), not controls.
  */
-export function sheetFrame({ title, subtitle, body, detailsEntity, favorite, footer }) {
+export function sheetFrame({ title, subtitle, body, detailsEntity, favorite, footer, wide = false }) {
   const heart = typeof favorite === "boolean"
     ? `<button type="button" class="sheet-fav" data-action="sheet-favorite" aria-pressed="${favorite}"
         title="${favorite ? "Remove from favorites" : "Add to favorites"}" aria-label="${favorite ? "Remove from favorites" : "Add to favorites"}">${favorite ? ICONS.heart : ICONS.heartOutline}</button>`
     : "";
   return `<div class="sheet-backdrop" data-action="sheet-close">
-    <div class="sheet" data-action="sheet-stay" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+    <div class="sheet${wide ? " wide" : ""}" data-action="sheet-stay" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
       <div class="sheet-head">
         <div class="sheet-titles"><h3>${escapeHtml(title)}</h3>${subtitle ? `<div class="sheet-sub">${escapeHtml(subtitle)}</div>` : ""}</div>
         ${heart}

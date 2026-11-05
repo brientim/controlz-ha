@@ -6,7 +6,7 @@ globalThis.window ??= new EventTarget();
 
 const {
   areasOrder, currentDashboardPath, entitiesOrder, hiddenLists, movedOrder, reorderSubset, roomsChangedThisSession,
-  setAreasOrder, setEntitiesOrder, setHidden,
+  securityBannerSettings, setAreasOrder, setEntitiesOrder, setHidden, setSecurityBanner,
 } = await import("../src/hidden.js");
 
 function mockHass(strategy, { admin = true } = {}) {
@@ -72,6 +72,29 @@ test("room order: move by one, drop before another, save to areas_order", async 
   assert.deepEqual(strategy.hide_areas, ["x"]);
   assert.deepEqual(areasOrder({ areas_order: ["z"] }), ["b", "a"]);
   assert.equal(roomsChangedThisSession(), true);
+});
+
+test("security banner placement: config until saved, then the saved value; default keys are dropped", async () => {
+  assert.deepEqual(securityBannerSettings({}), { mode: "all_rooms", rooms: [] });
+  assert.deepEqual(securityBannerSettings({ security_banner: "rooms", security_banner_rooms: ["office"] }), { mode: "rooms", rooms: ["office"] });
+
+  const hass = mockHass({ type: "custom:controlz-rooms", hide_areas: ["x"] });
+  await assert.rejects(setSecurityBanner(mockHass({ type: "custom:controlz-rooms" }, { admin: false }), { mode: "off" }), /admins can change the security banner/);
+  await setSecurityBanner(hass, { mode: "rooms", rooms: ["office", "kitchen", "office"] });
+  let strategy = hass.saved.at(-1).config.strategy;
+  assert.equal(strategy.security_banner, "rooms");
+  assert.deepEqual(strategy.security_banner_rooms, ["office", "kitchen"]);
+  assert.deepEqual(strategy.hide_areas, ["x"]);
+  assert.deepEqual(securityBannerSettings({ security_banner: "off" }), { mode: "rooms", rooms: ["office", "kitchen"] });
+
+  await setSecurityBanner(hass, { mode: "every_room", rooms: ["office"] });
+  strategy = hass.saved.at(-1).config.strategy;
+  assert.equal(strategy.security_banner, "every_room");
+  assert.equal("security_banner_rooms" in strategy, false);
+
+  await setSecurityBanner(hass, { mode: "all_rooms" });
+  strategy = hass.saved.at(-1).config.strategy;
+  assert.equal("security_banner" in strategy, false);
 });
 
 test("device tile order: reorder one section in place, save per room", async () => {

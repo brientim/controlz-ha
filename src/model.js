@@ -511,6 +511,26 @@ export function securityBanner(hass, options) {
   return { level, text };
 }
 
+/**
+ * Where the security banner shows (`security_banner`): All Rooms only (default), All Rooms and
+ * every room page, All Rooms and the rooms in `security_banner_rooms`, or nowhere.
+ */
+export const SECURITY_BANNER_MODES = Object.freeze([
+  { id: "all_rooms", label: "All Rooms only" },
+  { id: "every_room", label: "Every room" },
+  { id: "rooms", label: "Chosen rooms" },
+  { id: "off", label: "Off" },
+]);
+
+/** Whether the banner shows on All Rooms (`areaId` null) or on the room page of `areaId`. */
+export function showsSecurityBanner({ mode, rooms } = {}, areaId = null) {
+  const known = SECURITY_BANNER_MODES.some((m) => m.id === mode) ? mode : "all_rooms";
+  if (known === "off") return false;
+  if (!areaId) return true;
+  if (known === "every_room") return true;
+  return known === "rooms" && (rooms || []).includes(areaId);
+}
+
 const upperWords = (s) => String(s ?? "").replace(/_/g, " ").toUpperCase();
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 

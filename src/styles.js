@@ -291,6 +291,7 @@ export const SHEET_STYLES = `
     max-height: min(640px, calc(100vh - 32px)); max-height: min(640px, calc(100dvh - 32px));
     overflow: hidden;
   }
+  .sheet.wide { width: min(620px, 100%); max-height: min(860px, calc(100vh - 32px)); max-height: min(860px, calc(100dvh - 32px)); }
   .sheet-head { display: flex; align-items: flex-start; gap: 8px; flex-shrink: 0; }
   .sheet-titles { flex: 1; min-width: 0; }
   .sheet h3 { margin: 0; font-size: 1.05rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -381,6 +382,30 @@ export const SHEET_STYLES = `
   }
   .file-btn { position: relative; overflow: hidden; text-align: center; cursor: pointer; }
   .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .check-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+  .check-row {
+    display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 10px;
+    border: 1px solid var(--cz-border); background: var(--cz-bg-secondary); font-size: 0.88rem; cursor: pointer;
+  }
+  .check-row input { width: 18px; height: 18px; margin: 0; accent-color: var(--cz-primary); flex-shrink: 0; }
+  .help-new { background: var(--cz-bg-secondary); border-radius: 12px; padding: 10px 12px; }
+  .help-toc { display: flex; flex-wrap: wrap; gap: 6px; }
+  .help-chip {
+    border: 1px solid var(--cz-border); background: var(--cz-card-bg); color: var(--cz-text); border-radius: 999px;
+    padding: 5px 10px; font: inherit; font-size: 0.78rem; font-weight: 600; cursor: pointer;
+  }
+  .help-chip:hover { border-color: var(--cz-primary); }
+  .help-list { display: flex; flex-direction: column; gap: 6px; }
+  .help-sec { border: 1px solid var(--cz-border); border-radius: 12px; scroll-margin-top: 4px; }
+  .help-sec summary { cursor: pointer; padding: 10px 12px; font-weight: 700; font-size: 0.92rem; list-style-position: inside; }
+  .help-sec[open] summary { border-bottom: 1px solid var(--cz-border); }
+  .help-body { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px; font-size: 0.88rem; }
+  .help-body p { margin: 0; line-height: 1.45; }
+  .help-shot { display: block; border-radius: 10px; overflow: hidden; border: 1px solid var(--cz-border); background: var(--cz-bg-secondary); }
+  .help-shot img { display: block; width: 100%; height: auto; min-height: 60px; color: var(--cz-text-secondary); font-size: 0.78rem; }
+  .sheet a { color: var(--cz-primary); font-weight: 600; text-decoration: none; }
+  .sheet a:hover { text-decoration: underline; }
+  .help-links { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.88rem; }
   .ed-step { display: flex; flex-direction: column; gap: 8px; }
   .ed-step.boxed { padding: 10px; border: 1px solid var(--cz-border); border-radius: 10px; }
   .ed-step-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.8rem; font-weight: 700; color: var(--cz-text-secondary); }
@@ -396,7 +421,7 @@ export const GRID_STYLES = `
   /* Tile scale: everything below the header zooms together (same look, controls still fit).
      --cz-inner is the measured content width in px, widened by 1 / scale so the zoomed
      content still spans the page (percentages are not used: browsers resolve them differently under zoom). */
-  .page.scaled > :not(.page-head):not(.sheet-host):not(.edit-banner) {
+  .page.scaled > :not(.page-head):not(.sheet-host):not(.edit-banner):not(.banner-row) {
     zoom: var(--cz-scale);
     width: calc(var(--cz-inner) / var(--cz-scale));
   }
@@ -429,6 +454,7 @@ export const GRID_STYLES = `
   .banner.motion { background: #fde68a; color: #78350f; }
   .banner.warning { background: #fed7aa; color: #7c2d12; }
   .banner.insecure { background: #fecaca; color: #7f1d1d; }
+  .banner-row { margin: -4px 0 16px; }
   .btn {
     appearance: none; border: 1px solid var(--cz-border); background: #111827; color: #fff;
     font: inherit; font-weight: 700; font-size: 0.8rem; min-height: 36px; padding: 0.3rem 1rem;

@@ -43,6 +43,10 @@ Every page has a **View** menu (top right; in the sidebar next to the title) to 
 
 **Start page** (ControlZ Startup Room): open any room, Favorites or Automations and choose **View → Start on …** to make this device open there. It only applies when the dashboard is opened, so going back to All Rooms afterwards stays on All Rooms. **Start on All Rooms** clears it.
 
+**Version and Help**: the bottom of the View menu shows the installed ControlZ HA version and **? Help**: what's new in this version, a short guide to each feature with a screenshot, and links to this guide, the release notes and the issue tracker. Screenshots and links follow the installed version; the screenshots load from GitHub, so they need an internet connection.
+
+![Help](https://raw.githubusercontent.com/brientim/controlz-ha/main/dev/screenshots/help-sheet.png)
+
 ### Favorites
 
 Your favorite rooms, scenes and devices, on the **Favorites** view (tabs) or the Favorites row (sidebar). Tap ♥ in a room's or device's controls (light, thermostat, fan, alarm, automation), or choose **View → Edit favorites…** and tap ♥ on any tile.
@@ -82,13 +86,19 @@ Automations have their own **Automations** view (grouped by room, then "No room"
 
 **+ New automation** (Automations view, or **+ New** on a room's Automations heading) opens a simple editor like ControlZ's: a name, a room, one trigger (a time, a device changing, or sunrise / sunset with an offset) and one or more actions, run in order (activate a scene, run a script, control a device, or control a room — e.g. turn off all the lights in the Kitchen). Device pickers are grouped by room in your dashboard's room order. It saves through Home Assistant's own automation config API, so the result is an ordinary Home Assistant automation. **Edit** uses the same editor when an automation is that simple; anything with conditions, waits, extra data or templates opens Home Assistant's automation editor instead, so nothing is ever rewritten in a simpler form. Turn the view off with `automations_view: false`; room pages still list their automations.
 
-**Export and import** (admins): **Export** in an automation's or a scene's details sheet shows its config as YAML or JSON, with Copy, Download and (on phones and the companion app) Share. It is the config exactly as Home Assistant stores it, so it also pastes into Home Assistant's "Edit in YAML". **Import** (Automations view, or a room's Scenes heading) takes pasted YAML / JSON or a `.yaml` / `.json` file with one scene or automation or a list of them, shows what it found (and any scene devices this Home Assistant does not have), and adds each one **as new** in the chosen room — nothing existing is replaced.
+### Export and import
+
+Admins only. **Export** in an automation's or a scene's details sheet shows its config as YAML or JSON, with Copy, Download and (on phones and the companion app) Share. It is the config exactly as Home Assistant stores it, so it also pastes into Home Assistant's "Edit in YAML". **Import** (Automations view, or a room's Scenes heading) takes pasted YAML / JSON or a `.yaml` / `.json` file with one scene or automation or a list of them, shows what it found (and any scene devices this Home Assistant does not have), and adds each one **as new** in the chosen room — nothing existing is replaced.
 
 ![Automation details](https://raw.githubusercontent.com/brientim/controlz-ha/main/dev/screenshots/automation-sheet.png) With tabs, the page reloads after Done so hidden rooms leave the tab bar.
 
 ### Security banner
 
 The banner at the top of All Rooms looks at every Home Assistant device that gets a Security tile, in every area, and names the ones that need attention. Tap it for the full list; tap a device for its details.
+
+**Where it shows**: admins choose **View → Security banner…**: **All Rooms only** (default), **Every room** (also at the top of every room page), **Chosen rooms** (All Rooms plus the rooms you tick) or **Off**. It is saved in the dashboard config (`security_banner`, `security_banner_rooms`), so it applies on every device. A banner on a room page still shows the whole house, so you see an open garage door from the bedroom. With the sidebar, the All Rooms badge keeps showing the security state even when the banner is off.
+
+![Security banner settings](https://raw.githubusercontent.com/brientim/controlz-ha/main/dev/screenshots/security-banner-settings.png)
 
 | Banner | When |
 |--------|------|
@@ -185,6 +195,8 @@ strategy:
   entities_order:                  # device tile order per room (edit mode writes this); others follow by name
     office: [light.office_desk_lamp, light.office_colour_light]
   scenes_style: chips              # chips | tiles
+  security_banner: all_rooms       # all_rooms | every_room | rooms | off (View → Security banner… sets this)
+  security_banner_rooms: [office]  # with security_banner: rooms — room pages that also show the banner
   security_include: []             # only these entity ids raise the security banner
   security_exclude: [binary_sensor.office_window]   # never raise the banner
   favorites_view: true             # false = no Favorites view
@@ -226,7 +238,7 @@ npm run build       # dist/controlz-ha.js
 npm run serve       # then open http://127.0.0.1:8765/dev/harness.html (add ?fresh=1 to clear saved hides)
 ```
 
-`dev/harness.html` renders the dashboard against a mock `hass` (`dev/fixture.js`); service calls change the fixture state and show in a log overlay. The mock also fakes the automation and scene config APIs, frontend user data (favorites) and entity registry updates for the browser session (`?fresh=1` resets them). Query parameters: `?view=room-office&size=thin&dark=1&nav=sidebar&admin=0&open=menu|security|edit|maintenance|light-sheet|room-sheet|climate-sheet|fan-sheet|alarm-sheet|automation-sheet|editor-sheet`. `?fit=1` measures every tile at every size and reports any that are off-contract, clipped, overflowing or off-screen; add `&scale=0.6` and `&nav=sidebar` to check those too.
+`dev/harness.html` renders the dashboard against a mock `hass` (`dev/fixture.js`); service calls change the fixture state and show in a log overlay. The mock also fakes the automation and scene config APIs, frontend user data (favorites) and entity registry updates for the browser session (`?fresh=1` resets them). Query parameters: `?view=room-office&size=thin&dark=1&nav=sidebar&admin=0&open=menu|security|edit|maintenance|light-sheet|room-sheet|climate-sheet|fan-sheet|alarm-sheet|automation-sheet|editor-sheet|scene-sheet|export-sheet|import-sheet|help-sheet|security-settings` (`&fill=1` fills in the editor; `&section=automations` opens a help topic; `&mode=rooms&rooms=office` for the banner settings). `&banner=every_room` sets `security_banner` for the session. `?fit=1` measures every tile at every size and reports any that are off-contract, clipped, overflowing or off-screen; add `&scale=0.6` and `&nav=sidebar` to check those too.
 
 **Deploy a dev build without HACS** (copies to `config/www` over SSH and creates the dashboard):
 

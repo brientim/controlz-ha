@@ -18,8 +18,7 @@ import { OtherTile } from "./tiles/other-tile.js";
 import { SceneTile } from "./tiles/scene-tile.js";
 import { SecurityTile } from "./tiles/security-tile.js";
 import { SensorTile } from "./tiles/sensor-tile.js";
-
-const VERSION = __CONTROLZ_HA_VERSION__;
+import { VERSION } from "./version.js";
 
 /** Public single-entity card: picks the ControlZ tile for the entity's domain / device class. */
 class TileCard extends HTMLElement {

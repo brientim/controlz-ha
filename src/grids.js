@@ -7,15 +7,16 @@ import {
 } from "./favorites.js";
 import {
   EDIT_EVENT, HIDDEN_EVENT, NO_AREA, areasOrder, entitiesOrder, hiddenLists, isEditing, movedOrder, reorderSubset,
-  roomsChangedThisSession, setAreasOrder, setEditing, setEntitiesOrder, setHidden,
+  roomsChangedThisSession, securityBannerSettings, setAreasOrder, setEditing, setEntitiesOrder, setHidden,
 } from "./hidden.js";
 import { ICONS } from "./icons.js";
 import {
   automationGroups, favoriteAreas, favoriteItems, friendlyName, groupBySection, itemsOn, lightsOffTargets, maintenanceReport,
-  orderItems, roomIsOn, roomReadings, roomSummary, securityReport, sortedAreas,
+  orderItems, roomIsOn, roomReadings, roomSummary, securityReport, showsSecurityBanner, sortedAreas,
 } from "./model.js";
 import { HOME_FILTERS, PREFS_EVENT, effectiveNav, effectiveScale, effectiveSize, homeFilter, takeStartPage, writePrefs } from "./prefs.js";
 import { resolveAreaIcon, roomIconSvg } from "./room-icons.js";
+import { SECURITY_SETTINGS_EVENT, openSecuritySettings } from "./security-settings.js";
 import { sheetFrame } from "./sheet.js";
 import { GRID_STYLES } from "./styles.js";
 import { createTile } from "./tile-factory.js";
@@ -32,6 +33,13 @@ export const hiddenOptions = (config) => ({
   ...(config.hide_entities ? { hide_entities: config.hide_entities } : {}),
   ...(config.entities_order ? { entities_order: config.entities_order } : {}),
 });
+
+/** Security banner scope and placement, forwarded to every page that can show the banner. */
+export const securityOptions = (config) => Object.fromEntries(
+  ["security_include", "security_exclude", "security_banner", "security_banner_rooms"]
+    .filter((key) => config[key] != null)
+    .map((key) => [key, config[key]]),
+);
 
 /** View menu; `page` (`{ id, name }`) lets it offer "Start on this page". */
 export const viewMenuHtml = (config, hass, page = null) =>
@@ -77,6 +85,12 @@ const favoritesKey = () => {
   return `${[...f.areas]}|${[...f.entities]}`;
 };
 
+const SECURITY_GROUPS = [
+  { key: "insecure", title: "Insecure", dot: "#dc2626" },
+  { key: "warning", title: "Check", dot: "#ea580c" },
+  { key: "motion", title: "Motion", dot: "#ca8a04" },
+];
+
 const dragWrap = (ev) => ev.composedPath().find((el) => el instanceof HTMLElement && el.matches?.(".tile-wrap[draggable=true]"));
 
 /**
@@ -108,6 +122,10 @@ class CzPage extends HTMLElement {
     };
     this._resize = new ResizeObserver(() => this._applyScale());
     this.shadowRoot.addEventListener("click", (ev) => this._onPageClick(ev));
+    this.shadowRoot.addEventListener(SECURITY_SETTINGS_EVENT, (ev) => {
+      ev.stopPropagation();
+      openSecuritySettings(this);
+    });
     this._listenForDrags();
   }
 
@@ -242,7 +260,7 @@ class CzPage extends HTMLElement {
     this.setAttribute("size", this._size);
     const { areas, entities } = this._hiddenSets;
     const favs = this.usesFavorites() || this._editMode ? favoritesKey() : "";
-    const key = `${this._size}|${this._editMode}|${[...areas]}|${[...entities]}|${favs}|${this.structureKey()}`;
+    const key = `${this._size}|${this._editMode}|${[...areas]}|${[...entities]}|${favs}|${this._bannerShown()}|${this.structureKey()}`;
     if (key !== this._key) {
       this._key = key;
       this._children = [];
@@ -253,8 +271,83 @@ class CzPage extends HTMLElement {
     }
     this._applyScale();
     this.update();
+    this._updateBanner();
     for (const child of this._children) child.hass = this._hass;
     if (this._sheet?.isConnected) this._sheet.refresh();
+  }
+
+  /** Area whose room page this is (null = All Rooms), or undefined for pages without a security banner. */
+  bannerArea() {
+    return undefined;
+  }
+
+  _bannerShown() {
+    const area = this.bannerArea();
+    if (area === undefined || this._config.show_banner === false) return false;
+    return showsSecurityBanner(securityBannerSettings(this._config), area);
+  }
+
+  bannerHtml() {
+    return `<button type="button" class="banner" data-banner aria-haspopup="dialog">
+      <span aria-hidden="true">🛡</span><span class="banner-text"></span><span class="banner-more" aria-hidden="true">›</span>
+    </button>`;
+  }
+
+  _report() {
+    return securityReport(this._hass, { include: this._config.security_include, exclude: this._config.security_exclude });
+  }
+
+  _updateBanner() {
+    const banner = this.shadowRoot.querySelector(".banner");
+    if (!banner) return;
+    const report = this._report();
+    banner.className = `banner ${report.level}`;
+    const label = banner.querySelector(".banner-text");
+    if (label.textContent !== report.text) label.textContent = report.text;
+  }
+
+  // Owner interface for the shared <controlz-sheet> (security list; All Rooms adds maintenance).
+  _openSheet(mode) {
+    this._sheetMode = mode;
+    this._sheet ||= document.createElement("controlz-sheet");
+    this._sheet.show(this);
+  }
+
+  _row(item, dot, what, cls = "") {
+    return `<button type="button" class="sec-row" data-action="sec-row" data-entity="${escapeHtml(item.entity_id)}">
+      <span class="dot" style="background:${dot}"></span><span>${escapeHtml(item.name)}${item.area ? ` <span class="what">· ${escapeHtml(item.area)}</span>` : ""}</span>
+      <span class="${cls || "what"}">${escapeHtml(what)}</span></button>`;
+  }
+
+  sheetBody() {
+    return this._securitySheet();
+  }
+
+  _securitySheet() {
+    const report = this._report();
+    const groups = SECURITY_GROUPS.filter((g) => report[g.key].length).map((g) => `
+      <div class="sheet-section">
+        <div class="section-label">${g.title} (${report[g.key].length})</div>
+        ${report[g.key].map((i) => this._row(i, g.dot, i.phrase || "motion")).join("")}
+      </div>`).join("");
+    const scoped = this._config.security_include?.length
+      ? `Only the ${this._config.security_include.length} devices in security_include count.`
+      : "All doors, locks, windows, garage doors, alarms and smoke / gas / CO / leak sensors in Home Assistant count"
+        + (this._config.security_exclude?.length ? `, except ${this._config.security_exclude.length} excluded.` : ".");
+    return sheetFrame({
+      title: "Security",
+      subtitle: report.text,
+      body: `${groups || `<p class="sec-empty">All doors and locks secure. No motion.</p>`}<p class="sec-scope">${scoped}</p>`,
+    });
+  }
+
+  get actions() {
+    return {
+      "sec-row": (row) => {
+        this._sheet?.close();
+        this.moreInfo(row.dataset.entity);
+      },
+    };
   }
 
   /** Header row: `left` markup grows; the View menu sits on the right. */
@@ -293,9 +386,13 @@ class CzPage extends HTMLElement {
 
   _onPageClick(ev) {
     const target = ev.composedPath().find((el) => el instanceof HTMLElement && el.matches?.(
-      "[data-hide-kind], [data-fav-kind], [data-move-id], [data-edit-done], [data-new-automation], [data-import]"));
+      "[data-hide-kind], [data-fav-kind], [data-move-id], [data-edit-done], [data-new-automation], [data-import], [data-banner]"));
     if (!target) return;
     ev.stopPropagation();
+    if (target.hasAttribute("data-banner")) {
+      this._openSheet("security");
+      return;
+    }
     if (target.hasAttribute("data-edit-done")) {
       setEditing(false);
       if (roomsChangedThisSession() && effectiveNav(this._config.room_nav) === "tabs") location.reload();
@@ -412,7 +509,7 @@ class CzPage extends HTMLElement {
   }
 }
 
-/** One room: master tile, then Scenes / Lights / Coverings / Climate / Security / … sections. */
+/** One room: security banner (when `security_banner` includes this room), master tile, then Scenes / Lights / Coverings / Climate / Security / … sections. */
 export class RoomGrid extends CzPage {
   static getStubConfig(hass) {
     return { area: Object.keys(hass?.areas || {})[0] || "living_room" };
@@ -458,6 +555,7 @@ export class RoomGrid extends CzPage {
     this.header(page, show_title
       ? `<h1 class="page-title"><span class="title-icon">${roomIconSvg(icon)}</span>${escapeHtml(name)}<span class="readings-inline"></span></h1>`
       : "", { id: `room-${area}`, name });
+    if (this._bannerShown()) page.insertAdjacentHTML("beforeend", `<div class="banner-row">${this.bannerHtml()}</div>`);
     if (!items.length) {
       page.insertAdjacentHTML("beforeend", `<div class="empty">${all.length ? "Every device in this room is hidden." : "No supported devices in this area."}</div>`);
       return;
@@ -483,13 +581,11 @@ export class RoomGrid extends CzPage {
   favoriteTarget() {
     return { kind: "area", id: this._config.area };
   }
-}
 
-const SECURITY_GROUPS = [
-  { key: "insecure", title: "Insecure", dot: "#dc2626" },
-  { key: "warning", title: "Check", dot: "#ea580c" },
-  { key: "motion", title: "Motion", dot: "#ca8a04" },
-];
+  bannerArea() {
+    return this._config.area;
+  }
+}
 const FILTER_LABELS = { all: "All", on: "On", off: "Off" };
 
 /**
@@ -507,8 +603,7 @@ export class HomeGrid extends CzPage {
     this.shadowRoot.addEventListener("click", (ev) => {
       const path = ev.composedPath().filter((el) => el instanceof HTMLElement);
       const hit = (sel) => path.find((el) => el.matches?.(sel));
-      if (hit("[data-banner]")) this._openSheet("security");
-      else if (hit("[data-maintenance]")) this._openSheet("maintenance");
+      if (hit("[data-maintenance]")) this._openSheet("maintenance");
       else if (hit("[data-all-off]")) this._allOff();
       else if (hit("[data-filter]")) writePrefs({ home_filter: hit("[data-filter]").dataset.filter === "all" ? null : hit("[data-filter]").dataset.filter });
     });
@@ -575,8 +670,8 @@ export class HomeGrid extends CzPage {
     await setAreasOrder(this._hass, movedOrder(shown, id, opts));
   }
 
-  _report() {
-    return securityReport(this._hass, { include: this._config.security_include, exclude: this._config.security_exclude });
+  bannerArea() {
+    return null;
   }
 
   _maintenance() {
@@ -591,11 +686,7 @@ export class HomeGrid extends CzPage {
 
   build(page) {
     const title = this._config.title ? `<h1 class="page-title">${escapeHtml(this._config.title)}</h1>` : "";
-    const banner = this._config.show_banner
-      ? `<button type="button" class="banner" data-banner aria-haspopup="dialog">
-          <span aria-hidden="true">🛡</span><span class="banner-text"></span><span class="banner-more" aria-hidden="true">›</span>
-        </button>`
-      : "";
+    const banner = this._bannerShown() ? this.bannerHtml() : "";
     this.header(page, banner || title, { id: "rooms", name: "All Rooms" });
     if (banner && title) page.insertAdjacentHTML("afterbegin", title);
     const all = this._areas();
@@ -642,13 +733,6 @@ export class HomeGrid extends CzPage {
   }
 
   update() {
-    const banner = this.shadowRoot.querySelector(".banner");
-    if (banner) {
-      const report = this._report();
-      banner.className = `banner ${report.level}`;
-      const label = banner.querySelector(".banner-text");
-      if (label.textContent !== report.text) label.textContent = report.text;
-    }
     const row = this.shadowRoot.querySelector(".filter-row");
     if (row) {
       const html = this._filterRow();
@@ -670,19 +754,6 @@ export class HomeGrid extends CzPage {
     return window.confirm(message);
   }
 
-  // Owner interface for the shared <controlz-sheet> (security list, maintenance report).
-  _openSheet(mode) {
-    this._sheetMode = mode;
-    this._sheet ||= document.createElement("controlz-sheet");
-    this._sheet.show(this);
-  }
-
-  _row(item, dot, what, cls = "") {
-    return `<button type="button" class="sec-row" data-action="sec-row" data-entity="${escapeHtml(item.entity_id)}">
-      <span class="dot" style="background:${dot}"></span><span>${escapeHtml(item.name)}${item.area ? ` <span class="what">· ${escapeHtml(item.area)}</span>` : ""}</span>
-      <span class="${cls || "what"}">${escapeHtml(what)}</span></button>`;
-  }
-
   sheetBody() {
     return this._sheetMode === "maintenance" ? this._maintenanceSheet() : this._securitySheet();
   }
@@ -697,33 +768,6 @@ export class HomeGrid extends CzPage {
       ${m.count ? "" : `<p class="sec-empty">All batteries are fine and every device is online.</p>`}
       <p class="sec-scope">Batteries under ${m.threshold}% (battery_threshold) and devices that are unavailable. Tap one for details.</p>`;
     return sheetFrame({ title: "Maintenance", subtitle: m.count ? `${m.count} need attention` : "Nothing needs attention", body });
-  }
-
-  _securitySheet() {
-    const report = this._report();
-    const groups = SECURITY_GROUPS.filter((g) => report[g.key].length).map((g) => `
-      <div class="sheet-section">
-        <div class="section-label">${g.title} (${report[g.key].length})</div>
-        ${report[g.key].map((i) => this._row(i, g.dot, i.phrase || "motion")).join("")}
-      </div>`).join("");
-    const scoped = this._config.security_include?.length
-      ? `Only the ${this._config.security_include.length} devices in security_include count.`
-      : "All doors, locks, windows, garage doors, alarms and smoke / gas / CO / leak sensors in Home Assistant count"
-        + (this._config.security_exclude?.length ? `, except ${this._config.security_exclude.length} excluded.` : ".");
-    return sheetFrame({
-      title: "Security",
-      subtitle: report.text,
-      body: `${groups || `<p class="sec-empty">All doors and locks secure. No motion.</p>`}<p class="sec-scope">${scoped}</p>`,
-    });
-  }
-
-  get actions() {
-    return {
-      "sec-row": (row) => {
-        this._sheet?.close();
-        this.moreInfo(row.dataset.entity);
-      },
-    };
   }
 }
 
