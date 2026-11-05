@@ -19,15 +19,12 @@ export const helpLinks = (version) => [
 ];
 
 export const WHATS_NEW = {
-  version: "0.6.0",
+  version: "0.7.0",
   items: [
-    "Automations can do several things in order: + Add action under Then.",
-    "Control a room: one action for all the lights, blinds, fans… in a room.",
-    "Device, scene and room pickers follow your ControlZ rooms.",
-    "Export scenes and automations as YAML or JSON; Import them on any Home Assistant.",
-    "Tap a scene (or right-click a scene chip) to see what it sets.",
-    "Help (this page) and the version number in the View menu.",
-    "Security banner on every room, chosen rooms or off: View → Security banner… (admins).",
+    "Help (this page) and the version number at the bottom of the View menu.",
+    "Security banner on every room, on chosen rooms, or off: View → Security banner… (admins).",
+    "A banner on a room page shows the whole house; tap it for the list.",
+    "Wider Export and Import sheets, so YAML is easier to read.",
   ],
 };
 
