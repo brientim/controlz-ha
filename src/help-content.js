@@ -19,12 +19,14 @@ export const helpLinks = (version) => [
 ];
 
 export const WHATS_NEW = {
-  version: "0.7.0",
+  version: "0.8.0",
   items: [
-    "Help (this page) and the version number at the bottom of the View menu.",
-    "Security banner on every room, on chosen rooms, or off: View → Security banner… (admins).",
-    "A banner on a room page shows the whole house; tap it for the list.",
-    "Wider Export and Import sheets, so YAML is easier to read.",
+    "History: tap a sensor, door or window for its chart; 📈 History on a room; security history (filter, search, CSV) from the banner.",
+    "Room pages: status chips (motion, open doors, thermostats) and All / On / Off / ♥ plus device-type filters.",
+    "+ New scene saves a room as it is now; presets run scenes, waits and steps in order (saved as scripts).",
+    "Automations: every N minutes or hours, arrive / leave, sun height; notify, announce and wait actions.",
+    "Window Coverings, Cameras, Sensors and Weather pages; media player tiles and 📢 Announce with saved phrases.",
+    "View menu: lock button behaviour, accent colour and corners. Admins: choose which lights the room tile controls, and scenes that ask first.",
   ],
 };
 
@@ -51,9 +53,54 @@ export const HELP_SECTIONS = [
     anchor: "what-you-get",
   },
   {
+    id: "room-pages",
+    title: "Room status and filters",
+    text: "Under a room's name, chips show motion, open doors and windows, unlocked locks and what the thermostat is doing; tap one for that device. All / On / Off / ♥ and the device types narrow the room to what you want to see.",
+    steps: [
+      "📈 History shows every sensor in the room with a chart and its low and high.",
+      "Admins: in Edit rooms & favorites, the bulb under a light sets whether the room tile switches it.",
+    ],
+    image: "room-filters.png",
+    anchor: "room-pages-status-filters-and-the-room-tile",
+  },
+  {
+    id: "history",
+    title: "History",
+    text: "Tap a temperature, humidity, motion, door or window tile for its chart over 6 hours, 24 hours or 7 days. Security history lists every door, window, lock, alarm and motion change, newest first.",
+    steps: ["Security history: tap the security banner, then What happened.", "Filter by type and room, search, and Export CSV."],
+    image: "security-history.png",
+    anchor: "history-sensors-rooms-and-security",
+  },
+  {
+    id: "scenes-presets",
+    title: "Scenes and presets",
+    text: "Set a room how you like it, then + New scene on its Scenes heading saves it as a Home Assistant scene (admins). Presets run scenes and other steps in order, with waits between, like ControlZ's Home, Away and Bedtime.",
+    steps: [
+      "+ New preset is on All Rooms and the Automations page.",
+      "In a scene's or preset's sheet, admins can make it ask before running.",
+      "While a preset runs, a green banner offers Cancel.",
+    ],
+    image: "scene-capture.png",
+    anchor: "scenes-and-presets",
+  },
+  {
+    id: "house",
+    title: "House pages and weather",
+    text: "Window Coverings, Cameras, Sensors and Weather each have a page for the whole house. Coverings can open, stop or close them all; Sensors shows them by room, by type or by battery; Weather shows now, the next 24 hours, 7 days and the sun.",
+    image: "weather.png",
+    anchor: "house-pages-coverings-cameras-sensors-and-weather",
+  },
+  {
+    id: "media",
+    title: "Media and announcements",
+    text: "Media players show what is playing, with play / pause, skip and volume. 📢 Announce speaks a message on the speakers you tick, using Home Assistant's text to speech; save phrases you use often.",
+    image: "announce.png",
+    anchor: "media-and-announcements",
+  },
+  {
     id: "view",
     title: "View menu",
-    text: "View (top right) sets the tile size (Large, Thin, Compact), the scale (50–120%), rooms as tabs or a sidebar, and the page this device starts on. These choices are saved on this device only, so a wall tablet and a phone can differ.",
+    text: "View (top right) sets the tile size (Large, Thin, Compact), the scale (50–120%), rooms as tabs or a sidebar, what a lock's button does, the accent colour and corners, and the page this device starts on. These choices are saved on this device only, so a wall tablet and a phone can differ.",
     steps: ["Start on … makes this device open on the current page.", "Use dashboard defaults puts this device back to the dashboard's settings."],
     image: "view-menu.png",
     anchor: "view-menu",
@@ -81,6 +128,7 @@ export const HELP_SECTIONS = [
     steps: [
       "Admins: View → Security banner… shows it on All Rooms only, every room, chosen rooms, or turns it off.",
       "A banner on a room page still covers the whole house.",
+      "Tap a lock for Lock, Unlock and its history; View → Lock button sets whether its button asks first.",
     ],
     image: "security-banner-settings.png",
     anchor: "security-banner",
@@ -91,8 +139,9 @@ export const HELP_SECTIONS = [
     text: "The Automations page lists every automation by room. Run checks the automation's conditions first; the details sheet shows what it will do. Admins can create, edit, duplicate and delete.",
     steps: [
       "+ New automation: a name, a room, one trigger, then one or more actions.",
-      "Control a room: all the lights, coverings, fans… in one room at once.",
-      "Anything with conditions or waits opens Home Assistant's own editor.",
+      "Triggers include every N minutes, arriving or leaving a place, and the sun's height.",
+      "Actions include controlling a whole room, a notification, an announcement and a wait.",
+      "Anything with conditions or choices opens Home Assistant's own editor.",
     ],
     image: "automation-editor.png",
     anchor: "automations",

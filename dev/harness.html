@@ -56,8 +56,13 @@
 
     window.confirm = () => true;
     if (new URLSearchParams(location.search).has("fit")) localStorage.removeItem("controlz-ha.prefs");
+    else if (new URLSearchParams(location.search).has("prefs")) {
+      localStorage.setItem("controlz-ha.prefs", new URLSearchParams(location.search).get("prefs"));
+      window.dispatchEvent(new CustomEvent("controlz-ha-prefs"));
+    }
+    else if (new URLSearchParams(location.search).has("fresh")) localStorage.removeItem("controlz-ha.prefs");
     if (new URLSearchParams(location.search).has("fresh")) {
-      for (const key of ["controlz-harness-dashboard", "controlz-harness-user-data", "controlz-harness-automations", "controlz-harness-scenes"]) sessionStorage.removeItem(key);
+      for (const key of ["controlz-harness-dashboard", "controlz-harness-user-data", "controlz-harness-automations", "controlz-harness-scenes", "controlz-harness-scripts"]) sessionStorage.removeItem(key);
     }
     const log = document.getElementById("log");
     const print = (msg) => { log.textContent = `${msg}\n${log.textContent}`.slice(0, 4000); };
@@ -84,7 +89,7 @@
 
     function currentPath() {
       const seg = location.pathname.split("/").pop();
-      return seg.startsWith("room-") || ["favorites", "automations"].includes(seg) ? seg : "rooms";
+      return dashboard?.views.some((v) => v.path === seg) ? seg : "rooms";
     }
 
     function renderView(_event, forcedPath) {
@@ -194,6 +199,10 @@
       return null;
     };
     regenerate().then(async () => {
+      if (params.get("run")) {
+        const id = params.get("run");
+        await mock.hass.callService(id.split(".")[0], "turn_on", { entity_id: id });
+      }
       const open = params.get("open");
       if (open) {
         await new Promise((r) => setTimeout(r, 50));
@@ -214,7 +223,63 @@
         if (open === "light-sheet") deepFind("controlz-light-tile .color-btn, .color-btn[data-action=color]").click();
         if (open === "room-sheet") deepFind("[data-action=sheet-open]").click();
         if (open === "maintenance") deepFind("[data-maintenance]").click();
-        const tileSheet = { "climate-sheet": "climate.", "fan-sheet": "fan.", "alarm-sheet": "alarm_control_panel.", "automation-sheet": "automation." }[open];
+        if (open === "room-history-sheet") deepFind("[data-room-history]").click();
+        if (open === "announce-sheet") deepFind("[data-announce]").click();
+        if (open === "script-sheet") {
+          deepFind('.chip[data-entity="script.good_morning"]').dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, composed: true, cancelable: true }));
+          await new Promise((r) => setTimeout(r, 400));
+        }
+        if (open === "preset-sheet") {
+          deepFind("[data-new-preset]").click();
+          await new Promise((r) => setTimeout(r, 60));
+          const root = () => document.querySelector("controlz-sheet").shadowRoot;
+          const set = async (sel, value) => {
+            const el = root().querySelector(sel);
+            el.value = value;
+            for (const type of ["input", "change"]) el.dispatchEvent(new Event(type, { bubbles: true, composed: true }));
+            await new Promise((r) => setTimeout(r, 60));
+          };
+          await set("[data-field=alias]", "Bedtime");
+          await set("[data-field=icon]", "mdi:bed");
+          await set('[data-field="actions.0.entity_id"]', "scene.office_relax");
+          root().querySelector('[data-action=pr-add][data-kind=delay]').click();
+          await new Promise((r) => setTimeout(r, 60));
+          root().querySelector('[data-action=ed-add-action]').click();
+          await new Promise((r) => setTimeout(r, 60));
+          root().querySelector('[data-action=ed-action][data-kind=room][data-index="2"]').click();
+          await new Promise((r) => setTimeout(r, 60));
+          await set('[data-field="actions.2.area_id"]', "living_room");
+          await set('[data-field="actions.2.service"]', "turn_off");
+          root().querySelector("[data-field=alias]").blur();
+          await new Promise((r) => setTimeout(r, 200));
+          if (params.get("save") === "1") {
+            root().querySelector("[data-action=ed-save]").click();
+            await new Promise((r) => setTimeout(r, 1200));
+          } else root().querySelector(".sheet-body").scrollTop = 9999;
+        }
+        if (open === "scene-capture-sheet") {
+          deepFind("[data-new-scene]").click();
+          await new Promise((r) => setTimeout(r, 60));
+          const name = document.querySelector("controlz-sheet").shadowRoot.querySelector("[data-action=cap-name]");
+          name.value = "Office Evening";
+          name.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+          name.blur();
+          if (params.get("save") === "1") {
+            await new Promise((r) => setTimeout(r, 30));
+            document.querySelector("controlz-sheet").shadowRoot.querySelector("[data-action=cap-save]").click();
+            await new Promise((r) => setTimeout(r, 1200));
+          }
+        }
+        if (open === "security-history-sheet") {
+          deepFind("[data-banner]").click();
+          await new Promise((r) => setTimeout(r, 30));
+          document.querySelector("controlz-sheet").shadowRoot.querySelector("[data-action=sec-history]").click();
+        }
+        if (open.endsWith("history-sheet")) await new Promise((r) => setTimeout(r, 300));
+        const tileSheet = {
+          "climate-sheet": "climate.", "fan-sheet": "fan.", "alarm-sheet": "alarm_control_panel.", "automation-sheet": "automation.",
+          "sensor-history-sheet": params.get("entity") || "sensor.", "lock-sheet": "lock.", "media-sheet": "media_player.",
+        }[open];
         if (tileSheet) {
           const deepAll = (root = document, out = []) => {
             for (const el of root.querySelectorAll("*")) {
@@ -248,6 +313,28 @@
             sheetRoot().querySelector("[data-field=alias]").blur();
             await new Promise((r) => setTimeout(r, 300));
             sheetRoot().querySelector(".sheet-body").scrollTop = 9999;
+          }
+          if (params.get("fill") === "2") {
+            const click = async (sel) => { sheetRoot().querySelector(sel).click(); await new Promise((r) => setTimeout(r, 60)); };
+            await setField("[data-field=alias]", "Arrive home");
+            await click("[data-action=ed-trigger][data-kind=zone]");
+            await setField("[data-field='trigger.person']", "person.tim");
+            await click("[data-action=ed-action][data-kind=notify]");
+            await setField('[data-field="actions.0.service"]', "mobile_app_tims_phone");
+            await setField('[data-field="actions.0.message"]', "Welcome home");
+            await click("[data-action=ed-add-action]");
+            await click('[data-action=ed-action][data-kind=delay][data-index="1"]');
+            await click("[data-action=ed-add-action]");
+            await click('[data-action=ed-action][data-kind=announce][data-index="2"]');
+            await setField('[data-field="actions.2.player"]', "media_player.kitchen_speaker");
+            await setField('[data-field="actions.2.entity_id"]', "tts.google_translate_en_com");
+            await setField('[data-field="actions.2.message"]', "Tim is home");
+            sheetRoot().querySelector("[data-field=alias]").blur();
+            await new Promise((r) => setTimeout(r, 300));
+            if (params.get("save") === "1") {
+              await click("[data-action=ed-save]");
+              await new Promise((r) => setTimeout(r, 1200));
+            } else sheetRoot().querySelector(".sheet-body").scrollTop = 9999;
           }
         }
         if (open === "help-sheet" || open === "menu-about") {
@@ -294,7 +381,19 @@
             "  actions:", "    - action: light.turn_off", "      target:", "        area_id: office", "",
           ].join("\n"));
         }
-        if (open.endsWith("-sheet")) {
+        if (params.get("probe")) {
+          const prefix = params.get("probe");
+          const pre = document.createElement("pre");
+          pre.id = "probe";
+          const api = mock.calls.filter((c) => c.domain === "api" && c.service.startsWith("POST")).map((c) => c.data);
+          pre.textContent = JSON.stringify({
+            states: Object.keys(mock.hass.states).filter((id) => id.startsWith(prefix)).map((id) => ({ id, area: mock.hass.entities[id]?.area_id ?? null })),
+            saved: api,
+            calls: mock.calls.filter((c) => !["api", "ws", "registry"].includes(c.domain)),
+          });
+          document.body.append(pre);
+        }
+        if (open.endsWith("-sheet") && !params.has("shot")) {
           await new Promise((r) => setTimeout(r, 50));
           const sheet = document.querySelector("controlz-sheet")?.shadowRoot.querySelector(".sheet");
           const body = document.querySelector("controlz-sheet")?.shadowRoot.querySelector(".sheet-body");
@@ -317,6 +416,10 @@
       pre.id = "fit-report";
       pre.textContent = JSON.stringify(report);
       document.body.append(pre);
+      const errors = document.createElement("pre");
+      errors.id = "errors";
+      errors.textContent = JSON.stringify(window.__errors);
+      document.body.append(errors);
     });
   </script>
 </body>

@@ -63,6 +63,22 @@ export const HOME_FILTERS = ["all", "on", "off"];
 export const homeFilter = () => (HOME_FILTERS.includes(readPrefs().home_filter) ? readPrefs().home_filter : "all");
 
 /**
+ * What a lock tile's button does on this device (ControlZ lock / door tap mode): ask before
+ * unlocking (default), act straight away, or open the lock controls.
+ */
+export const LOCK_TAPS = [
+  { id: "confirm", label: "Ask first" },
+  { id: "immediate", label: "Instant" },
+  { id: "sheet", label: "Controls" },
+];
+export const lockTap = () => (LOCK_TAPS.some((t) => t.id === readPrefs().lock_tap) ? readPrefs().lock_tap : "confirm");
+
+/** Room page filter on this device (all / on / off / favorites) and section (null = every type); shared by every room. */
+export const ROOM_FILTER_IDS = ["all", "on", "off", "favorites"];
+export const roomFilter = () => (ROOM_FILTER_IDS.includes(readPrefs().room_filter) ? readPrefs().room_filter : "all");
+export const roomSection = () => (typeof readPrefs().room_section === "string" ? readPrefs().room_section : null);
+
+/**
  * Start page on this device (ControlZ Startup Room): a view path such as `room-office`,
  * `favorites` or `automations`; null = All Rooms.
  */

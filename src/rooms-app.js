@@ -1,7 +1,9 @@
-import { areaItems, visibleItems } from "./area-cache.js";
+import { areaItems, masterItems } from "./area-cache.js";
 import { escapeHtml } from "./base.js";
 import { FAVORITES_EVENT, isFavorite, loadFavorites, toggleFavorite } from "./favorites.js";
 import { hiddenOptions, iconOptions, securityOptions, viewMenuHtml } from "./grids.js";
+import { HOUSE_PAGES, availableHousePages } from "./house-grids.js";
+import { WEATHER_ICON } from "./weather-grid.js";
 import { EDIT_EVENT, HIDDEN_EVENT, areasOrder, hiddenLists, isEditing, movedOrder, setAreasOrder, setHidden } from "./hidden.js";
 import { ICONS } from "./icons.js";
 import { automationGroups, roomSummary, securityReport, sortedAreas } from "./model.js";
@@ -13,7 +15,10 @@ import { TOKENS } from "./styles.js";
 const ALL = "__all";
 const FAV = "__favorites";
 const AUTO = "__automations";
-const PAGES = { favorites: FAV, automations: AUTO };
+const PAGE_INFO = { ...HOUSE_PAGES, weather: { title: "Weather", icon: WEATHER_ICON } };
+const HOUSE = Object.fromEntries(Object.keys(PAGE_INFO).map((id) => [id, `__${id}`]));
+const PAGES = { favorites: FAV, automations: AUTO, ...HOUSE };
+const pageOf = (selected) => Object.keys(PAGES).find((id) => PAGES[id] === selected) || null;
 const EYE = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 110-10 5 5 0 010 10zm0-8a3 3 0 100 6 3 3 0 000-6z"/></svg>`;
 const EYE_OFF = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2 4.27L3.27 3 21 20.73 19.73 22l-3.08-3.08A11.6 11.6 0 0112 19.5c-5 0-9.27-3.11-11-7.5a11.9 11.9 0 014.35-5.39L2 4.27zM12 7a5 5 0 015 5c0 .65-.13 1.26-.36 1.83l2.92 2.92A11.82 11.82 0 0023 12c-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16A4.85 4.85 0 0112 7z"/></svg>`;
 const NARROW_PX = 700;
@@ -37,7 +42,9 @@ const STYLES = `
     background: transparent; color: var(--cz-text); font: inherit; text-align: left; cursor: pointer;
   }
   .room-item:hover { background: var(--cz-bg-secondary); }
-  .room-item[aria-current="page"] { background: rgba(79,70,229,0.12); border-color: rgba(79,70,229,0.35); }
+  .room-item[aria-current="page"] {
+    background: color-mix(in srgb, var(--cz-primary) 12%, transparent); border-color: color-mix(in srgb, var(--cz-primary) 35%, transparent);
+  }
   .room-item:focus-visible { outline: 2px solid var(--cz-primary); outline-offset: 1px; }
   .ri-icon {
     width: 34px; height: 34px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
@@ -104,8 +111,7 @@ const readHashRoom = () => {
 
 const hashFor = (selected) => {
   if (!selected) return "";
-  if (selected === FAV) return "#page=favorites";
-  if (selected === AUTO) return "#page=automations";
+  if (pageOf(selected)) return `#page=${pageOf(selected)}`;
   return `#room=${encodeURIComponent(selected)}`;
 };
 
@@ -262,17 +268,30 @@ export class RoomsApp extends HTMLElement {
   _pageInfo(areas) {
     if (this._selected === FAV) return { id: "favorites", name: "Favorites" };
     if (this._selected === AUTO) return { id: "automations", name: "Automations" };
+    const page = pageOf(this._selected);
+    if (page) return { id: page, name: PAGE_INFO[page].title };
     if (this._selected) return { id: `room-${this._selected}`, name: areas.find((a) => a.area_id === this._selected)?.name || this._selected };
     return { id: "rooms", name: "All Rooms" };
+  }
+
+  /** House pages with something to show (cached per registry / states change). */
+  get _housePages() {
+    const count = Object.keys(this._hass.states || {}).length;
+    if (this._houseCache?.entities !== this._hass.entities || this._houseCache.count !== count) {
+      this._houseCache = { entities: this._hass.entities, count, pages: availableHousePages(this._hass, this._config).map((p) => p.id) };
+    }
+    return this._houseCache.pages;
   }
 
   _sync() {
     if (!this._hass || !this._config) return;
     loadFavorites(this._hass);
     const areas = this._areas();
-    const special = (this._selected === FAV && this._showFavorites) || (this._selected === AUTO && this._showAutomations);
+    const house = this._housePages;
+    const special = (this._selected === FAV && this._showFavorites) || (this._selected === AUTO && this._showAutomations)
+      || house.includes(pageOf(this._selected));
     if (this._selected && !special && !areas.some((a) => a.area_id === this._selected)) this._selected = null;
-    const structure = `${this._editing}|${this._showFavorites}|${this._showAutomations}|${areas.map((a) => `${a.area_id}:${a.name}`).join(",")}`;
+    const structure = `${this._editing}|${this._showFavorites}|${this._showAutomations}|${house}|${areas.map((a) => `${a.area_id}:${a.name}`).join(",")}`;
     if (structure !== this._structure) {
       this._structure = structure;
       this._sideSig = null;
@@ -318,10 +337,11 @@ export class RoomsApp extends HTMLElement {
     }];
     if (this._showFavorites) rows.push({ id: FAV, name: "Favorites", icon: ICONS.heart, iconClass: "fav", on: false, special: true, chips: "" });
     if (this._showAutomations) rows.push({ id: AUTO, name: "Automations", icon: ICONS.gear, on: false, special: true, chips: "" });
+    for (const id of this._housePages) rows.push({ id: HOUSE[id], name: PAGE_INFO[id].title, icon: PAGE_INFO[id].icon, on: false, special: true, chips: "" });
     rows.at(-1).sep = true;
     const hiddenAreas = hiddenLists(this._config).areas;
     for (const a of areas) {
-      const s = roomSummary(this._hass, visibleItems(this._hass, a.area_id, this._config));
+      const s = roomSummary(this._hass, masterItems(this._hass, a.area_id, this._config));
       const { icon } = resolveAreaIcon(this._hass, a.area_id, iconOptions(this._config), { coverOnly: !s.lights.length && !!s.covers.length });
       rows.push({
         id: a.area_id, name: a.name, icon: roomIconSvg(icon), on: s.lightsOn > 0, chips: this._chips(s),
@@ -375,6 +395,15 @@ export class RoomsApp extends HTMLElement {
       } else if (this._selected === AUTO) {
         page = document.createElement("controlz-automations-grid");
         page.setConfig({ ...shared, areas_order: this._config.areas_order });
+      } else if (pageOf(this._selected) === "weather") {
+        page = document.createElement("controlz-weather-grid");
+        page.setConfig({ ...shared, ...(this._config.weather_entity ? { weather_entity: this._config.weather_entity } : {}) });
+      } else if (pageOf(this._selected)) {
+        page = document.createElement("controlz-house-grid");
+        page.setConfig({
+          ...shared, page: pageOf(this._selected), areas_order: this._config.areas_order, hide_areas: this._config.hide_areas,
+          ...(this._config.battery_threshold != null ? { battery_threshold: this._config.battery_threshold } : {}),
+        });
       } else if (this._selected) {
         page = document.createElement("controlz-room-grid");
         page.setConfig({ ...shared, ...securityOptions(this._config), area: this._selected, scenes_style: this._config.scenes_style || "chips" });

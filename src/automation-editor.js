@@ -1,6 +1,6 @@
 import {
-  ACTION_KINDS, DEVICE_SERVICES, ROOM_DOMAINS, TRIGGER_KINDS, draftProblems, draftToConfig, duplicateConfig, emptyAction, emptyDraft,
-  newAutomationId, roomServices,
+  ACTION_KINDS, DEVICE_SERVICES, INTERVAL_UNITS, ROOM_DOMAINS, TRIGGER_KINDS, draftProblems, draftToConfig, duplicateConfig, emptyAction,
+  emptyDraft, newAutomationId, roomServices,
 } from "./automation-model.js";
 import { escapeHtml, navigate } from "./base.js";
 import { areasOrder, hiddenLists } from "./hidden.js";
@@ -84,7 +84,7 @@ const option = (value, label, selected) =>
   `<option value="${escapeHtml(value)}" ${selected ? "selected" : ""}>${escapeHtml(label)}</option>`;
 
 /**
- * Simple automation editor (ControlZ Create HA Automation): name, room, one trigger, one action.
+ * Simple automation editor (ControlZ Create HA Automation / Events V4): name, room, one trigger, then actions in order.
  * It is a sheet owner: the host element keeps pushing `hass`, so the sheet re-renders through it.
  */
 export class AutomationEditor {
@@ -181,6 +181,30 @@ export class AutomationEditor {
         <label class="field"><span>Offset (optional, e.g. -00:30 for 30 minutes before)</span>
         <input type="text" data-action="ed-field" data-field="trigger.offset" value="${escapeHtml(t.offset)}" placeholder="00:00" /></label>`;
     }
+    if (t.kind === "interval") {
+      return `<div class="field-row">
+        <label class="field"><span>Every</span>
+          <input type="number" min="1" max="${(INTERVAL_UNITS.find((u) => u.id === t.unit) || INTERVAL_UNITS[0]).max}" step="1"
+            data-action="ed-field" data-field="trigger.every" value="${escapeHtml(t.every)}" /></label>
+        <label class="field"><span>Unit</span><select data-action="ed-field" data-field="trigger.unit" aria-label="Unit">
+          ${INTERVAL_UNITS.map((u) => option(u.id, u.label, u.id === t.unit)).join("")}</select></label></div>
+        <p class="note">Hours run on the hour (every 2 hours: 00:00, 02:00, …).</p>`;
+    }
+    if (t.kind === "zone") {
+      const zones = Object.keys(this.hass?.states || {}).filter((id) => domainOf(id) === "zone")
+        .map((id) => ({ id, name: friendlyName(this.hass, id) })).sort((a, b) => a.name.localeCompare(b.name));
+      return `<label class="field"><span>Who</span>${this._entitySelect("trigger.person", ["person", "device_tracker"], t.person, "Choose a person…")}</label>
+        ${this._seg("ed-zone-event", [{ id: "enter", label: "Arrives at" }, { id: "leave", label: "Leaves" }], t.zone_event)}
+        <label class="field"><span>Place</span><select data-action="ed-field" data-field="trigger.zone" aria-label="Place">
+          ${option("", "Choose a place…", !t.zone)}${zones.map((z) => option(z.id, z.name, z.id === t.zone)).join("")}</select></label>
+        <p class="note">Places are Home Assistant zones; phones report them through the Home Assistant app.</p>`;
+    }
+    if (t.kind === "elevation") {
+      return `${this._seg("ed-direction", [{ id: "below", label: "Sun goes below" }, { id: "above", label: "Sun rises above" }], t.direction)}
+        <label class="field"><span>Height (degrees)</span>
+          <input type="number" min="-90" max="90" step="0.5" data-action="ed-field" data-field="trigger.degrees" value="${escapeHtml(t.degrees)}" /></label>
+        <p class="note">0° is the horizon, -6° is dusk or dawn, 10° is well after sunrise.</p>`;
+    }
     const domain = domainOf(t.entity_id);
     const known = KNOWN_STATES[domain];
     const to = known
@@ -197,8 +221,39 @@ export class AutomationEditor {
       ${value ? "" : option("", "Choose…", true)}${services.map(([s, label]) => option(s, label, s === value)).join("")}</select></label>`;
   }
 
+  /** Notify services Home Assistant offers (`notify.mobile_app_…`, `notify.notify`, …), `send_message` left out. */
+  _notifyOptions(value) {
+    const names = Object.keys(this.hass?.services?.notify || {}).filter((s) => s !== "send_message").sort();
+    if (value && !names.includes(value)) names.unshift(value);
+    const label = (s) => (s === "notify" ? "Everyone (notify.notify)" : s.replace(/^mobile_app_/, "Phone: ").replace(/_/g, " "));
+    return `${option("", "Choose…", !value)}${names.map((s) => option(s, label(s), s === value)).join("")}`;
+  }
+
+  _text(field, value, label, placeholder = "") {
+    return `<label class="field"><span>${label}</span>
+      <input type="text" data-action="ed-field" data-field="${field}" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}" /></label>`;
+  }
+
   _actionFields(a, i) {
     const f = (key) => `actions.${i}.${key}`;
+    if (a.kind === "notify") {
+      return `<label class="field"><span>Send to</span><select data-action="ed-field" data-field="${f("service")}" aria-label="Send to">
+        ${this._notifyOptions(a.service)}</select></label>
+        ${this._text(f("title"), a.title, "Title (optional)")}${this._text(f("message"), a.message, "Message", "The front door is open")}`;
+    }
+    if (a.kind === "announce") {
+      const voices = Object.keys(this.hass?.states || {}).filter((id) => domainOf(id) === "tts");
+      return `<div class="field-row">
+        <label class="field"><span>Speaker</span>${this._entitySelect(f("player"), ["media_player"], a.player, "Choose a speaker…")}</label>
+        <label class="field"><span>Voice</span>${this._entitySelect(f("entity_id"), ["tts"], a.entity_id, "Choose…")}</label></div>
+        ${this._text(f("message"), a.message, "Say", "Dinner is ready")}
+        ${voices.length ? "" : `<p class="note">Add a text-to-speech service in Home Assistant (Settings → Voice assistants) to announce.</p>`}`;
+    }
+    if (a.kind === "delay") {
+      return `<div class="field-row">
+        <label class="field"><span>Minutes</span><input type="number" min="0" max="1439" step="1" data-action="ed-field" data-field="${f("minutes")}" value="${escapeHtml(a.minutes)}" /></label>
+        <label class="field"><span>Seconds</span><input type="number" min="0" max="59" step="1" data-action="ed-field" data-field="${f("seconds")}" value="${escapeHtml(a.seconds)}" /></label></div>`;
+    }
     if (a.kind === "scene") return `<label class="field"><span>Scene</span>${this._entitySelect(f("entity_id"), ["scene"], a.entity_id, "Choose a scene…")}</label>`;
     if (a.kind === "script") return `<label class="field"><span>Script</span>${this._entitySelect(f("entity_id"), ["script"], a.entity_id, "Choose a script…")}</label>`;
     if (a.kind === "room") {
@@ -218,10 +273,16 @@ export class AutomationEditor {
       ${services.length ? this._serviceSelect(f("service"), services, a.service) : ""}`;
   }
 
+  /** Word for one entry of the "Then" list ("Action"; presets say "Step"). */
+  get stepWord() {
+    return "Action";
+  }
+
   _actionBlock(a, i, count) {
+    const word = this.stepWord;
     const head = count > 1
-      ? `<div class="ed-step-head"><span>Action ${i + 1}</span>
-          <button type="button" class="btn ghost" data-action="ed-remove-action" data-index="${i}" aria-label="Remove action ${i + 1}">Remove</button></div>`
+      ? `<div class="ed-step-head"><span>${word} ${i + 1}</span>
+          <button type="button" class="btn ghost" data-action="ed-remove-action" data-index="${i}" aria-label="Remove ${word.toLowerCase()} ${i + 1}">Remove</button></div>`
       : "";
     return `<div class="ed-step${count > 1 ? " boxed" : ""}">${head}${this._seg("ed-action", ACTION_KINDS, a.kind, i)}${this._actionFields(a, i)}</div>`;
   }
@@ -250,7 +311,7 @@ export class AutomationEditor {
       ${this._problems.length || this._error ? `<div class="sheet-section">
         ${this._problems.map((p) => `<p class="error">${escapeHtml(p)}</p>`).join("")}
         ${this._error ? `<p class="error">${escapeHtml(this._error)}</p>` : ""}</div>` : ""}
-      <p class="note">For conditions, waits or anything else, use Home Assistant's automation editor.</p>`;
+      <p class="note">For conditions, choices, waiting for something to happen or anything else, use Home Assistant's automation editor.</p>`;
     const footer = `
       <button type="button" class="btn ghost" data-action="ed-advanced">Home Assistant editor</button>
       <button type="button" class="btn ghost" data-action="sheet-close">Cancel</button>
@@ -318,6 +379,14 @@ export class AutomationEditor {
       },
       "ed-sun": (button) => {
         this._set("trigger.event", button.dataset.kind);
+        this._rerender();
+      },
+      "ed-zone-event": (button) => {
+        this._set("trigger.zone_event", button.dataset.kind);
+        this._rerender();
+      },
+      "ed-direction": (button) => {
+        this._set("trigger.direction", button.dataset.kind);
         this._rerender();
       },
       "ed-action": (button) => {

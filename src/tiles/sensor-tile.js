@@ -1,4 +1,5 @@
 import { CzElement, escapeHtml } from "../base.js";
+import { openEntityHistory } from "../history.js";
 import { ICONS, SENSOR_EMOJI } from "../icons.js";
 import {
   domainOf,
@@ -16,7 +17,7 @@ const TICK_MS = 30_000;
 
 /**
  * Motion sensors (MOTION / CLEAR, red when active, temperature from the same device)
- * and numeric sensors (temperature, humidity, lux, …).
+ * and numeric sensors (temperature, humidity, lux, …). Tap for the sensor's history chart.
  */
 export class SensorTile extends CzElement {
   connectedCallback() {
@@ -92,6 +93,6 @@ export class SensorTile extends CzElement {
   }
 
   onTileClick() {
-    this.moreInfo(this._config.entity);
+    openEntityHistory(this, this._config.entity);
   }
 }

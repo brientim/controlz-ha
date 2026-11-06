@@ -99,9 +99,15 @@ export function makeFixture() {
       state: "21.0", attributes: { friendly_name: "Lounge Temperature", device_class: "temperature", unit_of_measurement: "°C" },
     },
     "script.evening_wind_down": {
-      state: "off", attributes: { friendly_name: "Evening Wind Down", last_triggered: ago(600) },
+      state: "off", attributes: { friendly_name: "Evening Wind Down", last_triggered: ago(600), id: "evening_wind_down" },
     },
-    "media_player.lounge_tv": { state: "playing", attributes: { friendly_name: "Lounge TV" } },
+    "media_player.lounge_tv": {
+      state: "playing",
+      attributes: {
+        friendly_name: "Lounge TV", device_class: "tv", app_name: "Netflix", volume_level: 0.2, is_volume_muted: false,
+        source: "Netflix", source_list: ["Netflix", "YouTube", "HDMI 1"], supported_features: 18829,
+      },
+    },
     "climate.living_room_thermostat": {
       state: "heat",
       attributes: {
@@ -148,6 +154,31 @@ export function makeFixture() {
     "light.unassigned": light("Unassigned Lamp"),
     "automation.leak_alert": {
       state: "on", attributes: { friendly_name: "Leak Alert", id: "1700000000003", last_triggered: ago(4320), mode: "single", current: 0 },
+    },
+
+    "media_player.kitchen_speaker": {
+      state: "playing",
+      attributes: {
+        friendly_name: "Kitchen Speaker", device_class: "speaker", volume_level: 0.35, is_volume_muted: false, media_title: "Harvest Moon",
+        media_artist: "Neil Young", media_content_type: "music", source: "Radio", source_list: ["Radio", "Spotify", "TV"], supported_features: 23485,
+      },
+    },
+    "script.good_morning": { state: "off", attributes: { friendly_name: "Good Morning", last_triggered: ago(1500), id: "good_morning", icon: "mdi:weather-sunny" } },
+    "scene.house_all_off": { state: "unknown", attributes: { friendly_name: "All Off", id: "1700000000103" } },
+    "person.tim": { state: "home", attributes: { friendly_name: "Tim" } },
+    "zone.home": { state: "1", attributes: { friendly_name: "Home", latitude: 37.3349, longitude: -122.009, radius: 100 } },
+    "zone.work": { state: "0", attributes: { friendly_name: "Work", latitude: 37.3318, longitude: -122.0312, radius: 200 } },
+    "tts.google_translate_en_com": { state: "unknown", attributes: { friendly_name: "Google Translate en com" } },
+    "sun.sun": {
+      state: "above_horizon",
+      attributes: { friendly_name: "Sun", elevation: 42.1, azimuth: 61.3, rising: true, next_rising: ago(-1150), next_setting: ago(-470), next_dawn: ago(-1125), next_dusk: ago(-445) },
+    },
+    "weather.home": {
+      state: "partlycloudy",
+      attributes: {
+        friendly_name: "Home", temperature: 23.4, apparent_temperature: 24.1, humidity: 58, pressure: 1016, wind_speed: 14, wind_bearing: 135,
+        uv_index: 6, temperature_unit: "°C", wind_speed_unit: "km/h", pressure_unit: "hPa", supported_features: 3,
+      },
     },
   };
 
@@ -207,6 +238,13 @@ export function makeFixture() {
 
     "light.unassigned": e(null),
     "automation.leak_alert": e(null),
+
+    "media_player.kitchen_speaker": e("kitchen"),
+    "script.good_morning": e(null),
+    "scene.house_all_off": e(null),
+    "person.tim": e(null),
+    "tts.google_translate_en_com": e(null),
+    "weather.home": e(null),
   };
 
   for (const [id, s] of Object.entries(states)) {
@@ -215,5 +253,10 @@ export function makeFixture() {
     s.last_updated ??= s.last_changed;
   }
   const config = { unit_system: { temperature: "°C" } };
-  return { areas, floors, devices, entities, states, config };
+  const services = {
+    notify: { notify: {}, mobile_app_tims_phone: {}, send_message: {} },
+    tts: { speak: {} },
+    media_player: { volume_set: {}, media_play_pause: {}, media_next_track: {}, media_previous_track: {}, select_source: {} },
+  };
+  return { areas, floors, devices, entities, states, config, services };
 }

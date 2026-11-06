@@ -13,6 +13,7 @@ export const TILE_TAGS = {
   [KIND.CLIMATE]: "controlz-climate-tile",
   [KIND.FAN]: "controlz-fan-tile",
   [KIND.CAMERA]: "controlz-camera-tile",
+  [KIND.MEDIA]: "controlz-media-tile",
   [KIND.OTHER]: "controlz-other-tile",
   room: "controlz-room-card",
 };

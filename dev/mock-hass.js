@@ -50,8 +50,32 @@ const SEED_SCENES = {
   },
 };
 
+const SCRIPTS_KEY = "controlz-harness-scripts";
+const SEED_SCRIPTS = {
+  evening_wind_down: {
+    alias: "Evening Wind Down", mode: "single",
+    sequence: [
+      { action: "scene.turn_on", target: { entity_id: "scene.office_relax" } },
+      { delay: "00:10:00" },
+      { action: "light.turn_off", target: { area_id: "living_room" } },
+    ],
+  },
+  good_morning: {
+    alias: "Good Morning", icon: "mdi:weather-sunny", mode: "single",
+    sequence: [
+      { action: "cover.open_cover", target: { area_id: "living_room" } },
+      { action: "scene.turn_on", target: { entity_id: "scene.office_focus" } },
+      { action: "tts.speak", target: { entity_id: "tts.google_translate_en_com" }, data: { media_player_entity_id: "media_player.kitchen_speaker", message: "Good morning" } },
+    ],
+  },
+};
+
 /** Config stores the mock config API serves: `config/<domain>/config/<id>`. */
 const CONFIG_STORES = {
+  script: {
+    key: SCRIPTS_KEY, seed: SEED_SCRIPTS, name: (c) => c.alias, state: "off", entityId: (id) => `script.${id}`,
+    attributes: (c) => ({ last_triggered: null, mode: c.mode || "single", ...(c.icon ? { icon: c.icon } : {}) }),
+  },
   automation: {
     key: AUTOMATIONS_KEY, seed: SEED_AUTOMATIONS, name: (c) => c.alias, state: "on",
     attributes: (c) => ({ last_triggered: null, mode: c.mode || "single", current: 0 }),
@@ -75,9 +99,90 @@ const session = {
 
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "automation";
 
+/** Seeded random numbers per entity, so the harness history looks the same on every load. */
+const seeded = (text) => {
+  let h = 2166136261;
+  for (const c of text) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  return () => {
+    h = Math.imul(h ^ (h >>> 15), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    return ((h ^= h >>> 16) >>> 0) / 4294967296;
+  };
+};
+
+/** Fake `weather/subscribe_forecast` data: 48 hours or 7 days from now. */
+function mockForecast(type) {
+  const rnd = seeded(type);
+  const start = new Date();
+  start.setMinutes(0, 0, 0);
+  const conditions = ["sunny", "partlycloudy", "cloudy", "rainy", "partlycloudy", "sunny", "lightning-rainy"];
+  if (type === "hourly") {
+    return Array.from({ length: 48 }, (_, i) => {
+      const t = new Date(start.getTime() + i * 3_600_000);
+      const h = t.getHours();
+      return {
+        datetime: t.toISOString(), condition: h < 6 || h > 19 ? "clear-night" : conditions[Math.floor(i / 7) % conditions.length],
+        temperature: Math.round((18 + 6 * Math.sin(((h - 9) / 24) * Math.PI * 2) + (rnd() - 0.5) * 2) * 10) / 10,
+        precipitation_probability: Math.round(rnd() * (i > 20 && i < 30 ? 80 : 20)),
+      };
+    });
+  }
+  return Array.from({ length: 7 }, (_, i) => ({
+    datetime: new Date(start.getTime() + i * 86_400_000).toISOString(), condition: conditions[i % conditions.length],
+    temperature: Math.round(20 + rnd() * 8), templow: Math.round(9 + rnd() * 6), precipitation_probability: Math.round(rnd() * 70),
+    precipitation: Math.round(rnd() * 80) / 10,
+  }));
+}
+
+/** Fake recorder history (compressed format, seconds) ending in each entity's current state. */
+function mockHistory(states, { start_time, end_time, entity_ids = [] }) {
+  const start = Date.parse(start_time);
+  const end = Date.parse(end_time) || Date.now();
+  const out = {};
+  for (const id of entity_ids) {
+    const s = states[id];
+    if (!s) continue;
+    const rnd = seeded(id);
+    const entries = [];
+    const add = (t, state) => entries.push({ s: String(state), lu: t / 1000 });
+    const domain = id.split(".")[0];
+    const dc = s.attributes?.device_class;
+    if (domain === "sensor" && Number.isFinite(Number(s.state))) {
+      const now = Number(s.state);
+      const amp = { temperature: 2.2, humidity: 7, illuminance: 180, battery: 0 }[dc] ?? now * 0.1;
+      const step = 15 * 60_000;
+      for (let t = start; t < end; t += step) {
+        const day = Math.sin(((t / 3_600_000) % 24) / 24 * Math.PI * 2 - Math.PI / 2);
+        const v = dc === "battery" ? now : now + amp * day + (rnd() - 0.5) * amp * 0.3 - amp * Math.sin(((end / 3_600_000) % 24) / 24 * Math.PI * 2 - Math.PI / 2);
+        add(t, Math.round(Math.max(0, v) * 10) / 10);
+      }
+      add(end - 1000, s.state);
+    } else {
+      const states2 = domain === "lock" ? ["locked", "unlocked"] : domain === "cover" ? ["closed", "open"]
+        : domain === "alarm_control_panel" ? ["disarmed", "armed_away"] : ["off", "on"];
+      const motion = ["motion", "occupancy", "presence"].includes(dc);
+      const hazard = ["smoke", "gas", "carbon_monoxide", "moisture", "safety", "tamper"].includes(dc);
+      const gap = motion ? [25, 120] : domain === "alarm_control_panel" ? [400, 700] : [150, 420];
+      const hold = motion ? [2, 12] : domain === "alarm_control_panel" ? [200, 400] : [1, 25];
+      add(start, states2[0]);
+      let t = start + rnd() * gap[1] * 60_000;
+      while (!hazard && t < end - 30 * 60_000) {
+        add(t, states2[1]);
+        t += (hold[0] + rnd() * (hold[1] - hold[0])) * 60_000;
+        add(t, states2[0]);
+        t += (gap[0] + rnd() * (gap[1] - gap[0])) * 60_000;
+      }
+      if (String(entries.at(-1).s) !== String(s.state)) add(Math.min(end - 1000, Math.max(entries.at(-1).lu * 1000 + 60_000, Date.parse(s.last_changed) || 0)), s.state);
+    }
+    out[id] = entries.filter((e, i) => i === 0 || e.lu * 1000 >= start);
+  }
+  return out;
+}
+
 export function createMockHass(onChange) {
   const fixture = makeFixture();
   const calls = [];
+  const scriptTimers = {};
   let hass;
 
   const patch = (entityId, fn) => {
@@ -136,6 +241,15 @@ export function createMockHass(onChange) {
       s.state = (a.current_position ?? 0) > 0 ? "open" : "closed";
     }),
     lock: (service, _data, id) => patch(id, (s) => { s.state = service === "lock" ? "locked" : "unlocked"; }),
+    media_player: (service, data, id) => patch(id, (s, a) => {
+      if (service === "media_play_pause") s.state = s.state === "playing" ? "paused" : "playing";
+      if (service === "turn_off") s.state = "off";
+      if (service === "turn_on") s.state = "idle";
+      if (service === "volume_set") a.volume_level = data.volume_level;
+      if (service === "volume_mute") a.is_volume_muted = data.is_volume_muted;
+      if (service === "select_source") a.source = data.source;
+      if (service === "media_next_track" || service === "media_previous_track") a.media_title = service === "media_next_track" ? "Heart of Gold" : "Old Man";
+    }),
     alarm_control_panel: (service, _data, id) => patch(id, (s) => {
       s.state = service === "alarm_disarm" ? "disarmed" : service.replace("alarm_arm_", "armed_");
     }),
@@ -146,7 +260,20 @@ export function createMockHass(onChange) {
       if (service === "trigger") a.last_triggered = new Date().toISOString();
     }),
     scene: (_service, _data, id) => patch(id, (s) => { s.state = new Date().toISOString(); }),
-    script: (_service, _data, id) => patch(id, (_s, a) => { a.last_triggered = new Date().toISOString(); }),
+    script: (service, _data, id) => {
+      patch(id, (s, a) => {
+        s.state = service === "turn_off" ? "off" : "on";
+        if (service !== "turn_off") a.last_triggered = new Date().toISOString();
+      });
+      clearTimeout(scriptTimers[id]);
+      if (service !== "turn_off") {
+        scriptTimers[id] = setTimeout(() => {
+          hass = { ...hass, states: { ...hass.states } };
+          patch(id, (s) => { s.state = "off"; });
+          push();
+        }, Number(new URLSearchParams(globalThis.location?.search || "").get("script_ms") || 6000));
+      }
+    },
   };
 
   const push = () => {
@@ -166,7 +293,7 @@ export function createMockHass(onChange) {
           continue;
         }
         if (!entityId) {
-          entityId = `${domain}.${slug(store.name(config))}`;
+          entityId = store.entityId ? store.entityId(id) : `${domain}.${slug(store.name(config))}`;
           while (hass.states[entityId]) entityId += "_2";
           hass.states[entityId] = {
             entity_id: entityId, state: store.state, last_changed: new Date().toISOString(), last_updated: new Date().toISOString(),
@@ -183,7 +310,7 @@ export function createMockHass(onChange) {
 
   const callApi = async (method, path, body) => {
     calls.push({ domain: "api", service: `${method} ${path}`, data: body ?? {} });
-    const match = /^config\/(automation|scene)\/config\/(.+)$/.exec(path);
+    const match = /^config\/(automation|scene|script)\/config\/(.+)$/.exec(path);
     if (!match) throw new Error(`mock: unsupported API ${method} ${path}`);
     const [, domain] = match;
     const id = decodeURIComponent(match[2]);
@@ -195,7 +322,7 @@ export function createMockHass(onChange) {
       const { __area, ...clean } = config;
       return structuredClone(clean);
     }
-    if (method === "POST") stored[id] = { ...stored[id], ...body, id };
+    if (method === "POST") stored[id] = domain === "script" ? { ...body, __area: stored[id]?.__area } : { ...stored[id], ...body, id };
     if (method === "DELETE") stored[id] = null;
     session.set(key, stored);
     await new Promise((r) => setTimeout(r, 150));
@@ -205,6 +332,11 @@ export function createMockHass(onChange) {
   };
 
   const callWS = async (msg) => {
+    if (msg.type === "history/history_during_period") {
+      calls.push({ domain: "ws", service: msg.type, data: { entity_ids: msg.entity_ids.length } });
+      await new Promise((r) => setTimeout(r, 80));
+      return mockHistory(hass.states, msg);
+    }
     if (msg.type === "lovelace/config") return session.get(DASHBOARD_KEY, { strategy: { type: "custom:controlz-rooms" } });
     if (msg.type === "lovelace/config/save") {
       session.set(DASHBOARD_KEY, msg.config);
@@ -246,6 +378,13 @@ export function createMockHass(onChange) {
     },
     callApi,
     callWS,
+    connection: {
+      subscribeMessage: (cb, msg) => {
+        calls.push({ domain: "ws", service: `subscribe ${msg.type}`, data: { forecast_type: msg.forecast_type } });
+        const timer = setTimeout(() => cb({ type: msg.forecast_type, forecast: mockForecast(msg.forecast_type) }), 60);
+        return Promise.resolve(() => clearTimeout(timer));
+      },
+    },
     user: { is_admin: new URLSearchParams(globalThis.location?.search || "").get("admin") !== "0", name: "Harness" },
   });
 

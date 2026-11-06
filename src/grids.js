@@ -1,20 +1,28 @@
-import { areaItems, itemsKey, visibleItems } from "./area-cache.js";
+import { openAnnounce, voices } from "./announce.js";
+import { areaItems, itemsKey, masterItems, visibleItems } from "./area-cache.js";
 import { openAutomationEditor } from "./automation-editor.js";
+import { openPresetEditor } from "./preset-editor.js";
+import { openSceneCapture } from "./scene-sheet.js";
 import { openImportSheet } from "./transfer.js";
 import { dashboardBase, escapeHtml, fireEvent, navigate } from "./base.js";
 import {
   FAVORITES_EVENT, favoriteLists, favoriteOrder, isFavorite, loadFavorites, setFavoritesOrder, toggleFavorite,
 } from "./favorites.js";
 import {
-  EDIT_EVENT, HIDDEN_EVENT, NO_AREA, areasOrder, entitiesOrder, hiddenLists, isEditing, movedOrder, reorderSubset,
-  roomsChangedThisSession, securityBannerSettings, setAreasOrder, setEditing, setEntitiesOrder, setHidden,
+  EDIT_EVENT, HIDDEN_EVENT, NO_AREA, areasOrder, entitiesOrder, hiddenLists, isEditing, movedOrder, reorderSubset, roomExcluded,
+  roomsChangedThisSession, securityBannerSettings, setAreasOrder, setEditing, setEntitiesOrder, setHidden, setRoomExcluded,
 } from "./hidden.js";
+import { openEntityHistory, openRoomHistory, openSecurityHistory } from "./history.js";
+import { historyItems } from "./history-model.js";
 import { ICONS } from "./icons.js";
 import {
-  automationGroups, favoriteAreas, favoriteItems, friendlyName, groupBySection, itemsOn, lightsOffTargets, maintenanceReport,
-  orderItems, roomIsOn, roomReadings, roomSummary, securityReport, showsSecurityBanner, sortedAreas,
+  KIND, ROOM_FILTERS, automationGroups, domainOf, looseItems, favoriteAreas, favoriteItems, filterRoomItems, friendlyName, groupBySection, itemsOn,
+  lightsOffTargets, maintenanceReport, orderItems, roomIsOn, roomReadings, roomStatus, roomSummary, securityReport, showsSecurityBanner,
+  sortedAreas,
 } from "./model.js";
-import { HOME_FILTERS, PREFS_EVENT, effectiveNav, effectiveScale, effectiveSize, homeFilter, takeStartPage, writePrefs } from "./prefs.js";
+import {
+  HOME_FILTERS, PREFS_EVENT, effectiveNav, effectiveScale, effectiveSize, homeFilter, roomFilter, roomSection, takeStartPage, writePrefs,
+} from "./prefs.js";
 import { resolveAreaIcon, roomIconSvg } from "./room-icons.js";
 import { SECURITY_SETTINGS_EVENT, openSecuritySettings } from "./security-settings.js";
 import { sheetFrame } from "./sheet.js";
@@ -32,6 +40,8 @@ export const hiddenOptions = (config) => ({
   ...(config.hide_areas ? { hide_areas: config.hide_areas } : {}),
   ...(config.hide_entities ? { hide_entities: config.hide_entities } : {}),
   ...(config.entities_order ? { entities_order: config.entities_order } : {}),
+  ...(config.room_exclude ? { room_exclude: config.room_exclude } : {}),
+  ...(config.confirm_scenes ? { confirm_scenes: config.confirm_scenes } : {}),
 });
 
 /** Security banner scope and placement, forwarded to every page that can show the banner. */
@@ -58,7 +68,7 @@ const EYE_OFF = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"
  * when `move` names a group (a section, or the rooms), move buttons and drag to reorder within that
  * group. Buttons keep their on-screen size at any tile scale.
  */
-function editWrap(el, { kind, id, name, hidden = false, canHide = false, move = null }) {
+export function editWrap(el, { kind, id, name, hidden = false, canHide = false, move = null, roomSwitch = null }) {
   const wrap = document.createElement("div");
   wrap.className = `tile-wrap${hidden ? " is-hidden" : ""}`;
   wrap.dataset.wrapId = id;
@@ -75,7 +85,11 @@ function editWrap(el, { kind, id, name, hidden = false, canHide = false, move = 
     ${canHide ? `<button type="button" class="hide-toggle" data-hide-kind="${kind}" data-hide-id="${escapeHtml(id)}" data-hide="${hidden ? "0" : "1"}"
       aria-pressed="${hidden}" title="${hidden ? "Show" : "Hide"} ${n}" aria-label="${hidden ? "Show" : "Hide"} ${n}">${hidden ? EYE_OFF : EYE}</button>` : ""}
     ${move ? `<button type="button" class="move-btn prev" data-move-id="${escapeHtml(id)}" data-move-group="${escapeHtml(move)}" data-move="-1" title="Move ${n} earlier" aria-label="Move ${n} earlier">${ICONS.chevronLeft}</button>
-      <button type="button" class="move-btn next" data-move-id="${escapeHtml(id)}" data-move-group="${escapeHtml(move)}" data-move="1" title="Move ${n} later" aria-label="Move ${n} later">${ICONS.chevronRight}</button>` : ""}`);
+      <button type="button" class="move-btn next" data-move-id="${escapeHtml(id)}" data-move-group="${escapeHtml(move)}" data-move="1" title="Move ${n} later" aria-label="Move ${n} later">${ICONS.chevronRight}</button>` : ""}
+    ${roomSwitch ? `<button type="button" class="room-switch-btn" data-room-switch-id="${escapeHtml(id)}" data-room-switch="${roomSwitch.excluded ? "1" : "0"}"
+      aria-pressed="${!roomSwitch.excluded}" title="${roomSwitch.excluded ? `The room tile leaves ${n} alone. Tap so it controls it again.` : `The room tile switches and dims ${n}. Tap to leave it alone.`}"
+      aria-label="${n}: ${roomSwitch.excluded ? "not controlled" : "controlled"} by the room tile">${ICONS.bulb}${roomSwitch.excluded ? "<span class=\"slash\"></span>" : ""}</button>` : ""}`);
+  if (roomSwitch?.excluded) wrap.classList.add("room-excluded");
   return wrap;
 }
 
@@ -97,7 +111,7 @@ const dragWrap = (ev) => ev.composedPath().find((el) => el instanceof HTMLElemen
  * Shared shell for page-level cards: rebuilds child tiles only when the set of entities, the
  * tile size, the hidden lists, favorites (where shown) or edit mode change; otherwise just forwards `hass`.
  */
-class CzPage extends HTMLElement {
+export class CzPage extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
@@ -272,6 +286,7 @@ class CzPage extends HTMLElement {
     this._applyScale();
     this.update();
     this._updateBanner();
+    this._updateRunning();
     for (const child of this._children) child.hass = this._hass;
     if (this._sheet?.isConnected) this._sheet.refresh();
   }
@@ -306,6 +321,30 @@ class CzPage extends HTMLElement {
     if (label.textContent !== report.text) label.textContent = report.text;
   }
 
+  /** Scripts this page shows as running (ControlZ running-automation banner), each with Cancel. */
+  runningScripts() {
+    return [];
+  }
+
+  /** Where the running banner goes (pages that have one call this in `build`). */
+  runningSlot(page) {
+    this._runningHtml = null;
+    page.insertAdjacentHTML("beforeend", `<div class="running-row" role="status" hidden></div>`);
+  }
+
+  _updateRunning() {
+    const row = this.shadowRoot.querySelector(".running-row");
+    if (!row) return;
+    const running = this.runningScripts().filter((id) => this._hass.states[id]?.state === "on");
+    const html = running.map((id) => `<div class="running">
+      <span class="running-dot" aria-hidden="true"></span><span class="running-name">${escapeHtml(friendlyName(this._hass, id))} is running</span>
+      <button type="button" class="btn" data-cancel-script="${escapeHtml(id)}">Cancel</button></div>`).join("");
+    if (html === this._runningHtml) return;
+    this._runningHtml = html;
+    row.innerHTML = html;
+    row.hidden = !running.length;
+  }
+
   // Owner interface for the shared <controlz-sheet> (security list; All Rooms adds maintenance).
   _openSheet(mode) {
     this._sheetMode = mode;
@@ -337,7 +376,11 @@ class CzPage extends HTMLElement {
     return sheetFrame({
       title: "Security",
       subtitle: report.text,
-      body: `${groups || `<p class="sec-empty">All doors and locks secure. No motion.</p>`}<p class="sec-scope">${scoped}</p>`,
+      body: `${groups || `<p class="sec-empty">All doors and locks secure. No motion.</p>`}
+        <div class="sheet-section"><div class="btn-wrap">
+          <button type="button" class="btn secondary" data-action="sec-history">🕘 What happened (history)</button>
+        </div></div>
+        <p class="sec-scope">${scoped}</p>`,
     });
   }
 
@@ -347,6 +390,7 @@ class CzPage extends HTMLElement {
         this._sheet?.close();
         this.moreInfo(row.dataset.entity);
       },
+      "sec-history": () => openSecurityHistory(this),
     };
   }
 
@@ -360,8 +404,9 @@ class CzPage extends HTMLElement {
   _editBanner(page) {
     const head = page.querySelector(".page-head");
     const what = this.reorders();
+    const lights = this._isAdmin && this instanceof RoomGrid ? ` The bulb under a light sets whether the room tile switches it.` : "";
     const text = this._isAdmin
-      ? `Edit rooms &amp; favorites — tap ♥ to add a favorite (yours only), <span class="eye-inline">${EYE}</span> to hide or show for everyone${what ? `, and the arrows (or drag) to reorder ${what}` : ""}. Hidden items are dimmed here.`
+      ? `Edit rooms &amp; favorites — tap ♥ to add a favorite (yours only), <span class="eye-inline">${EYE}</span> to hide or show for everyone${what ? `, and the arrows (or drag) to reorder ${what}` : ""}. Hidden items are dimmed here.${lights}`
       : `Edit favorites — tap ♥ on any room, scene or device${what ? `; use the arrows (or drag) to reorder ${what}` : ""}. Favorites are yours and follow you to every device.`;
     const html = `<div class="edit-banner" role="status">
       <span>${text}</span>
@@ -386,11 +431,23 @@ class CzPage extends HTMLElement {
 
   _onPageClick(ev) {
     const target = ev.composedPath().find((el) => el instanceof HTMLElement && el.matches?.(
-      "[data-hide-kind], [data-fav-kind], [data-move-id], [data-edit-done], [data-new-automation], [data-import], [data-banner]"));
+      "[data-hide-kind], [data-fav-kind], [data-move-id], [data-edit-done], [data-new-automation], [data-import], [data-banner], [data-new-scene], [data-room-switch-id], [data-cancel-script], [data-new-preset]"));
     if (!target) return;
     ev.stopPropagation();
+    if (target.hasAttribute("data-new-preset")) {
+      openPresetEditor(this, { areaId: target.dataset.newPreset });
+      return;
+    }
+    if (target.dataset.cancelScript) {
+      this._hass.callService("script", "turn_off", { entity_id: target.dataset.cancelScript });
+      return;
+    }
     if (target.hasAttribute("data-banner")) {
       this._openSheet("security");
+      return;
+    }
+    if (target.hasAttribute("data-new-scene")) {
+      openSceneCapture(this, target.dataset.newScene);
       return;
     }
     if (target.hasAttribute("data-edit-done")) {
@@ -408,6 +465,7 @@ class CzPage extends HTMLElement {
     }
     this._runEdit(target, async () => {
       if (target.dataset.favKind) await toggleFavorite(this._hass, target.dataset.favKind, target.dataset.favId);
+      else if (target.dataset.roomSwitchId) await setRoomExcluded(this._hass, target.dataset.roomSwitchId, target.dataset.roomSwitch !== "1");
       else if (target.dataset.hideKind) await setHidden(this._hass, target.dataset.hideKind, target.dataset.hideId, target.dataset.hide === "1");
       else await this.moveTile(target.dataset.moveId, { delta: Number(target.dataset.move) }, target.dataset.moveGroup);
     });
@@ -456,15 +514,22 @@ class CzPage extends HTMLElement {
     const editing = this._editMode;
     const hiddenEntities = this._hiddenSets.entities;
     const roomAdmin = newAutomationArea !== undefined && this._isAdmin;
-    for (const section of groupBySection(items)) {
+    const sceneButtons = roomAdmin
+      ? `<button type="button" class="head-btn" data-new-scene="${escapeHtml(newAutomationArea)}" title="Save how this room is now as a scene">+ New scene</button>
+        <button type="button" class="head-btn" data-import="${escapeHtml(newAutomationArea)}">Import</button>`
+      : "";
+    const groups = groupBySection(items);
+    if (roomAdmin && !editing && !groups.some((s) => s.id === "scenes")) {
+      page.insertAdjacentHTML("beforeend", `<section><div class="section-head"><h2>Scenes</h2>${sceneButtons}</div>
+        <p class="hint">No scenes yet. Set the room how you like it, then + New scene.</p></section>`);
+    }
+    for (const section of groups) {
       const el = document.createElement("section");
-      const importButton = section.id === "scenes" && roomAdmin
-        ? `<button type="button" class="head-btn" data-import="${escapeHtml(newAutomationArea)}">Import</button>`
-        : "";
+      const importButton = section.id === "scenes" ? sceneButtons : "";
       if (section.id === "scenes" && this._config.scenes_style !== "tiles" && !editing) {
         el.innerHTML = `<div class="section-head"><h2>${section.title}</h2>${importButton}</div>`;
         const strip = document.createElement("controlz-scene-strip");
-        strip.setConfig({ tile_size: this._size, area_name: areaName, entities: section.items.map((i) => i.entity_id) });
+        strip.setConfig({ ...hiddenOptions(this._config), tile_size: this._size, area_name: areaName, entities: section.items.map((i) => i.entity_id) });
         this._children.push(strip);
         el.append(strip);
         page.append(el);
@@ -475,12 +540,14 @@ class CzPage extends HTMLElement {
         : importButton;
       el.innerHTML = `<div class="section-head"><h2>${section.title}</h2>${addButton}</div><div class="grid"></div>`;
       const grid = el.querySelector(".grid");
+      const excluded = roomExcluded(this._config);
       for (const item of section.items) {
         const tile = this.tile(item.kind, { entity: item.entity_id });
         grid.append(editing
           ? editWrap(tile, {
             kind: "entity", id: item.entity_id, name: friendlyName(this._hass, item.entity_id),
             hidden: hiddenEntities.has(item.entity_id), canHide: this._isAdmin, move: canMove && section.items.length > 1 ? section.id : null,
+            roomSwitch: roomAdmin && item.kind === "light" ? { excluded: excluded.has(item.entity_id) } : null,
           })
           : tile);
       }
@@ -515,13 +582,57 @@ export class RoomGrid extends CzPage {
     return { area: Object.keys(hass?.areas || {})[0] || "living_room" };
   }
 
+  constructor() {
+    super();
+    this.shadowRoot.addEventListener("click", (ev) => {
+      const hit = ev.composedPath().find((el) => el instanceof HTMLElement && el.matches?.("[data-status], [data-room-history], [data-room-filter], [data-room-section]"));
+      if (!hit) return;
+      if (hit.dataset.roomFilter) writePrefs({ room_filter: hit.dataset.roomFilter === "all" ? null : hit.dataset.roomFilter });
+      else if (hit.dataset.roomSection !== undefined) writePrefs({ room_section: hit.dataset.roomSection || null });
+      else if (hit.hasAttribute("data-room-history")) openRoomHistory(this, this._config.area);
+      else if (domainOf(hit.dataset.status) === "binary_sensor") openEntityHistory(this, hit.dataset.status);
+      else this.moreInfo(hit.dataset.status);
+    });
+  }
+
   normalizeConfig(config) {
     if (!config.area) throw new Error("controlz-room-grid: `area` (area_id) is required");
-    return { show_title: true, show_room_tile: true, scenes_style: "chips", ...config };
+    return { show_title: true, show_room_tile: true, show_room_status: true, scenes_style: "chips", ...config };
   }
 
   structureKey() {
-    return `${this._config.area}|${itemsKey(this._ordered())}`;
+    const filtered = this._editMode ? "" : itemsKey(this._filtered(this._ordered()));
+    return `${this._config.area}|${itemsKey(this._ordered())}|${roomFilter()}|${roomSection()}|${filtered}`;
+  }
+
+  usesFavorites() {
+    return roomFilter() === "favorites";
+  }
+
+  prefsChangeStructure() {
+    return this._builtFilter !== `${roomFilter()}|${roomSection()}`;
+  }
+
+  /** Room items after this device's room filter (hidden devices are dropped before this). */
+  _filtered(items) {
+    return filterRoomItems(this._hass, items.filter((i) => !this._hiddenSets.entities.has(i.entity_id)),
+      { filter: roomFilter(), section: roomSection(), favorites: favoriteLists().entities });
+  }
+
+  _filterRow(items) {
+    const filter = roomFilter();
+    const section = roomSection();
+    const present = groupBySection(items).filter((s) => s.id !== "scenes");
+    const chips = present.length > 1 || section
+      ? `<div class="seg" role="group" aria-label="Device type">
+          <button type="button" data-room-section="" aria-pressed="${!section}">All types</button>
+          ${present.map((s) => `<button type="button" data-room-section="${s.id}" aria-pressed="${s.id === section}">${escapeHtml(s.title)}</button>`).join("")}
+        </div>`
+      : "";
+    return `<div class="filter-row room-filter">
+      <div class="seg" role="group" aria-label="Show devices">${ROOM_FILTERS.map((f) =>
+        `<button type="button" data-room-filter="${f.id}" aria-pressed="${f.id === filter}" ${f.id === "favorites" ? 'title="Favorites" aria-label="Favorites"' : ""}>${f.label}</button>`).join("")}</div>
+      ${chips}</div>`;
   }
 
   /** The room's items in the saved tile order (`entities_order`), then by name. */
@@ -556,6 +667,10 @@ export class RoomGrid extends CzPage {
       ? `<h1 class="page-title"><span class="title-icon">${roomIconSvg(icon)}</span>${escapeHtml(name)}<span class="readings-inline"></span></h1>`
       : "", { id: `room-${area}`, name });
     if (this._bannerShown()) page.insertAdjacentHTML("beforeend", `<div class="banner-row">${this.bannerHtml()}</div>`);
+    this._statusHtml = null;
+    if (this._config.show_room_status !== false && !editing) page.insertAdjacentHTML("beforeend", `<div class="room-status" role="status"></div>`);
+    if (!editing) this.runningSlot(page);
+    this._builtFilter = `${roomFilter()}|${roomSection()}`;
     if (!items.length) {
       page.insertAdjacentHTML("beforeend", `<div class="empty">${all.length ? "Every device in this room is hidden." : "No supported devices in this area."}</div>`);
       return;
@@ -568,14 +683,39 @@ export class RoomGrid extends CzPage {
       master.append(editing ? editWrap(tile, { kind: "area", id: area, name }) : tile);
       page.append(master);
     }
-    this.sections(page, items, { areaName: name, newAutomationArea: area, canMove: this._isAdmin });
+    if (editing || this._config.show_filter === false) {
+      this.sections(page, items, { areaName: name, newAutomationArea: area, canMove: this._isAdmin });
+      return;
+    }
+    page.insertAdjacentHTML("beforeend", this._filterRow(visible));
+    const shown = this._filtered(items);
+    const filtering = roomFilter() !== "all" || roomSection();
+    if (filtering && !shown.length) {
+      const what = { on: "Nothing here is on.", off: "Nothing here is off.", favorites: "No favorites in this room yet." }[roomFilter()] || "Nothing to show.";
+      page.insertAdjacentHTML("beforeend", `<div class="empty">${what}</div>`);
+      return;
+    }
+    this.sections(page, shown, { areaName: name, newAutomationArea: filtering ? undefined : area, canMove: this._isAdmin });
   }
 
   update() {
     const el = this.shadowRoot.querySelector(".readings-inline");
-    if (!el) return;
-    const text = this._readings();
-    if (el.textContent !== text) el.textContent = text;
+    if (el) {
+      const text = this._readings();
+      if (el.textContent !== text) el.textContent = text;
+    }
+    const row = this.shadowRoot.querySelector(".room-status");
+    if (!row) return;
+    const items = visibleItems(this._hass, this._config.area, this._config);
+    const chips = roomStatus(this._hass, items);
+    const history = historyItems(items).length > 0;
+    const html = `${chips.map((c) => `<button type="button" class="status-chip ${c.level}" data-status="${escapeHtml(c.entity_id)}">
+        <span aria-hidden="true">${c.icon}</span>${escapeHtml(c.text)}</button>`).join("")}
+      ${history ? `<button type="button" class="status-chip history" data-room-history aria-haspopup="dialog">📈 History</button>` : ""}`;
+    if (html === this._statusHtml) return;
+    this._statusHtml = html;
+    row.innerHTML = html;
+    row.hidden = !chips.length && !history;
   }
 
   favoriteTarget() {
@@ -584,6 +724,10 @@ export class RoomGrid extends CzPage {
 
   bannerArea() {
     return this._config.area;
+  }
+
+  runningScripts() {
+    return visibleItems(this._hass, this._config.area, this._config).map((i) => i.entity_id).filter((id) => id.startsWith("script."));
   }
 }
 const FILTER_LABELS = { all: "All", on: "On", off: "Off" };
@@ -604,6 +748,7 @@ export class HomeGrid extends CzPage {
       const path = ev.composedPath().filter((el) => el instanceof HTMLElement);
       const hit = (sel) => path.find((el) => el.matches?.(sel));
       if (hit("[data-maintenance]")) this._openSheet("maintenance");
+      else if (hit("[data-announce]")) openAnnounce(this, []);
       else if (hit("[data-all-off]")) this._allOff();
       else if (hit("[data-filter]")) writePrefs({ home_filter: hit("[data-filter]").dataset.filter === "all" ? null : hit("[data-filter]").dataset.filter });
     });
@@ -658,11 +803,37 @@ export class HomeGrid extends CzPage {
     const areas = this._areas();
     const filter = this._editMode ? "all" : homeFilter();
     if (filter === "all") return areas;
-    return areas.filter((a) => roomIsOn(roomSummary(this._hass, visibleItems(this._hass, a.area_id, this._config))) === (filter === "on"));
+    return areas.filter((a) => roomIsOn(roomSummary(this._hass, masterItems(this._hass, a.area_id, this._config))) === (filter === "on"));
   }
 
   _onNow() {
     return this._editMode || homeFilter() !== "on" ? [] : itemsOn(this._hass, this._houseItems());
+  }
+
+  /** House-wide scenes and scripts (no room), ControlZ presets such as Home / Away / Bedtime. */
+  _presets() {
+    return looseItems(this._hass, [KIND.SCENE], this._editMode ? new Set() : this._hiddenSets.entities);
+  }
+
+  _presetsSection(page) {
+    const presets = this._presets();
+    const add = this._isAdmin && !this._editMode
+      ? `<button type="button" class="head-btn" data-new-preset="" title="Scenes and steps in order, saved as a Home Assistant script">+ New preset</button>`
+      : "";
+    if (!presets.length && !add) return;
+    if (this._editMode) {
+      this.sections(page, presets, {});
+      return;
+    }
+    const section = document.createElement("section");
+    section.innerHTML = `<div class="section-head"><h2>Scenes &amp; presets</h2>${add}</div>`;
+    if (presets.length) {
+      const strip = document.createElement("controlz-scene-strip");
+      strip.setConfig({ ...hiddenOptions(this._config), tile_size: this._size, entities: presets.map((i) => i.entity_id) });
+      this._children.push(strip);
+      section.append(strip);
+    } else section.insertAdjacentHTML("beforeend", `<p class="hint">House-wide scenes and presets (Home, Away, Bedtime…) go here.</p>`);
+    page.append(section);
   }
 
   async moveTile(id, opts) {
@@ -674,6 +845,12 @@ export class HomeGrid extends CzPage {
     return null;
   }
 
+  /** Every script in the house that is not hidden on this dashboard. */
+  runningScripts() {
+    const hidden = this._hiddenSets.entities;
+    return Object.keys(this._hass.states).filter((id) => id.startsWith("script.") && !hidden.has(id));
+  }
+
   _maintenance() {
     return maintenanceReport(this._hass, { threshold: Number(this._config.battery_threshold) || 20, exclude: this._config.hide_entities });
   }
@@ -681,7 +858,7 @@ export class HomeGrid extends CzPage {
   structureKey() {
     this._filter = homeFilter();
     const rooms = this._shownAreas().map((a) => `${a.area_id}:${a.name}:${a.icon || ""}`).join(",");
-    return `${this._filter}|${rooms}|${this._onNow().map((i) => i.entity_id).join(",")}`;
+    return `${this._filter}|${rooms}|${this._onNow().map((i) => i.entity_id).join(",")}|${itemsKey(this._presets())}`;
   }
 
   build(page) {
@@ -689,6 +866,7 @@ export class HomeGrid extends CzPage {
     const banner = this._bannerShown() ? this.bannerHtml() : "";
     this.header(page, banner || title, { id: "rooms", name: "All Rooms" });
     if (banner && title) page.insertAdjacentHTML("afterbegin", title);
+    if (!this._editMode) this.runningSlot(page);
     const all = this._areas();
     if (!all.length) {
       page.insertAdjacentHTML("beforeend", `<div class="empty">No areas with lights or window coverings yet. Assign devices to areas in Home Assistant.</div>`);
@@ -696,6 +874,7 @@ export class HomeGrid extends CzPage {
     }
     this._rowHtml = null;
     page.insertAdjacentHTML("beforeend", `<div class="filter-row"></div>`);
+    this._presetsSection(page);
     const areas = this._shownAreas();
     const hiddenAreas = this._hiddenSets.areas;
     const grid = document.createElement("div");
@@ -729,7 +908,13 @@ export class HomeGrid extends CzPage {
         `<button type="button" data-filter="${f}" aria-pressed="${f === filter}">${FILTER_LABELS[f]}</button>`).join("")}</div>`}
       ${parts.length ? `<button type="button" class="pill warn" data-maintenance aria-haspopup="dialog" title="Low batteries and offline devices">${parts.join(" · ")}</button>` : ""}
       <span class="spacer"></span>
+      ${this._canAnnounce() ? `<button type="button" class="pill" data-announce aria-haspopup="dialog" title="Speak a message on your speakers">📢 Announce</button>` : ""}
       ${off.count ? `<button type="button" class="pill" data-all-off title="Turn off every light on this page">💡 All lights off (${off.count})</button>` : ""}`;
+  }
+
+  _canAnnounce() {
+    if (this._config.show_announce === false || this._editMode) return false;
+    return voices(this._hass).length > 0 && Object.keys(this._hass.states).some((id) => id.startsWith("media_player."));
   }
 
   update() {
@@ -865,7 +1050,8 @@ export class AutomationsGrid extends CzPage {
   build(page) {
     const title = this._config.title || "Automations";
     const add = this._isAdmin
-      ? `<button type="button" class="head-btn" data-new-automation="">+ New automation</button><button type="button" class="head-btn" data-import="">Import</button>`
+      ? `<button type="button" class="head-btn" data-new-automation="">+ New automation</button><button type="button" class="head-btn" data-new-preset="">+ New preset</button>
+        <button type="button" class="head-btn" data-import="">Import</button>`
       : "";
     this.header(page, `<div class="section-head" style="margin:0"><h1 class="page-title"><span class="title-icon">${ICONS.gear}</span>${escapeHtml(title)}</h1>${add}</div>`,
       { id: "automations", name: title });

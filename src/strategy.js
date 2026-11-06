@@ -1,5 +1,9 @@
 import { areaItems } from "./area-cache.js";
+import { availableHousePages } from "./house-grids.js";
 import { automationGroups, sortedAreas } from "./model.js";
+
+const HOUSE_VIEW_ICONS = { coverings: "mdi:blinds", cameras: "mdi:cctv", sensors: "mdi:motion-sensor", weather: "mdi:weather-partly-cloudy" };
+const PAGE_TOGGLES = ["coverings_view", "cameras_view", "sensors_view", "weather_view"];
 import { effectiveNav } from "./prefs.js";
 import { resolveAreaIcon } from "./room-icons.js";
 
@@ -22,6 +26,11 @@ import { resolveAreaIcon } from "./room-icons.js";
  *     security_banner_rooms: []   # with `rooms`: room pages that also show the banner
  *     favorites_view: true      # false = no Favorites view (favorites are per Home Assistant user)
  *     automations_view: true    # false = no Automations view (room pages still list their automations)
+ *     coverings_view: true      # false = no house-wide Window Coverings page (Open all / Close all)
+ *     cameras_view: true        # false = no Cameras page
+ *     sensors_view: true        # false = no Sensors page (by room, by type, batteries & offline)
+ *     weather_view: true        # false = no Weather page (shown when Home Assistant has a weather entity)
+ *     weather_entity: weather.home  # optional: which weather entity the Weather page shows
  *     battery_threshold: 20     # All Rooms maintenance report: batteries under this % count as low
  *     show_maintenance: true    # false = no low battery / offline chip on All Rooms
  *     view_icons: false         # tabs only: room icons in tabs (HA then hides tab titles)
@@ -48,6 +57,8 @@ export class ControlZRoomsStrategy extends HTMLElement {
       ...(config.hide_areas ? { hide_areas: config.hide_areas } : {}),
       ...(config.hide_entities ? { hide_entities: config.hide_entities } : {}),
       ...(config.entities_order ? { entities_order: config.entities_order } : {}),
+      ...(config.room_exclude ? { room_exclude: config.room_exclude } : {}),
+      ...(config.confirm_scenes ? { confirm_scenes: config.confirm_scenes } : {}),
       ...(config.room_icons ? { room_icons: config.room_icons } : {}),
       ...(config.icon_source ? { icon_source: config.icon_source } : {}),
     };
@@ -86,6 +97,8 @@ export class ControlZRoomsStrategy extends HTMLElement {
               hide_areas: areaOptions.hide,
               ...(showFavorites ? {} : { favorites_view: false }),
               ...(config.automations_view === false ? { automations_view: false } : {}),
+              ...Object.fromEntries(PAGE_TOGGLES.filter((k) => config[k] === false).map((k) => [k, false])),
+              ...(config.weather_entity ? { weather_entity: config.weather_entity } : {}),
             }],
           },
           ...iconsView,
@@ -125,6 +138,15 @@ export class ControlZRoomsStrategy extends HTMLElement {
           type: "panel",
           cards: [{ type: "custom:controlz-automations-grid", ...shared, areas_order: areaOptions.order }],
         }] : []),
+        ...availableHousePages(hass, config).map((p) => ({
+          title: p.id === "coverings" ? "Coverings" : p.title,
+          path: p.id,
+          ...(config.view_icons ? { icon: HOUSE_VIEW_ICONS[p.id] } : {}),
+          type: "panel",
+          cards: [p.id === "weather"
+            ? { type: "custom:controlz-weather-grid", ...shared, ...(config.weather_entity ? { weather_entity: config.weather_entity } : {}) }
+            : { type: "custom:controlz-house-grid", page: p.id, ...shared, ...home, areas_order: areaOptions.order }],
+        })),
         ...areas.map((a) => ({
           title: a.name,
           path: `room-${a.area_id}`,

@@ -6,8 +6,39 @@ globalThis.window ??= new EventTarget();
 
 const {
   areasOrder, currentDashboardPath, entitiesOrder, hiddenLists, movedOrder, reorderSubset, roomsChangedThisSession,
-  securityBannerSettings, setAreasOrder, setEntitiesOrder, setHidden, setSecurityBanner,
+  securityBannerSettings, setAreasOrder, setEntitiesOrder, setHidden, setSecurityBanner, roomExcluded, setRoomExcluded,
+  confirmScenes, runScene, setSceneConfirm,
 } = await import("../src/hidden.js");
+
+test("scenes that ask first: confirm_scenes, and runScene asks only for those", async () => {
+  const hass = mockHass({ type: "custom:controlz-rooms" });
+  const ran = [];
+  hass.callService = (domain, service, data) => ran.push(`${domain}.${service} ${data.entity_id}`);
+  globalThis.window.confirm = () => false;
+  assert.equal(runScene(hass, {}, "scene.a", "A"), true);
+  await setSceneConfirm(hass, "script.night", true);
+  assert.deepEqual(hass.saved.at(-1).config.strategy.confirm_scenes, ["script.night"]);
+  assert.equal(runScene(hass, {}, "script.night", "Night"), false);
+  globalThis.window.confirm = () => true;
+  assert.equal(runScene(hass, {}, "script.night", "Night"), true);
+  assert.deepEqual(ran, ["scene.turn_on scene.a", "script.turn_on script.night"]);
+  await setSceneConfirm(hass, "script.night", false);
+  assert.equal("confirm_scenes" in hass.saved.at(-1).config.strategy, false);
+  assert.equal(confirmScenes({ confirm_scenes: ["scene.x"] }).size, 0);
+});
+
+test("room tile exclusions save to room_exclude and apply straight away", async () => {
+  assert.deepEqual([...roomExcluded({ room_exclude: ["light.x"] })], ["light.x"]);
+  const hass = mockHass({ type: "custom:controlz-rooms" });
+  await setRoomExcluded(hass, "light.b", true);
+  await setRoomExcluded(hass, "light.a", true);
+  assert.deepEqual(hass.saved.at(-1).config.strategy.room_exclude, ["light.a", "light.b"]);
+  assert.deepEqual([...roomExcluded({})], ["light.a", "light.b"]);
+  await setRoomExcluded(hass, "light.a", false);
+  await setRoomExcluded(hass, "light.b", false);
+  assert.equal("room_exclude" in hass.saved.at(-1).config.strategy, false);
+  await assert.rejects(setRoomExcluded(mockHass({ type: "custom:controlz-rooms" }, { admin: false }), "light.a", true), /admins/);
+});
 
 function mockHass(strategy, { admin = true } = {}) {
   const saved = [];

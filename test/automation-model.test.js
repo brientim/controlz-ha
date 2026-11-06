@@ -84,15 +84,77 @@ test("anything the simple editor cannot show is left to Home Assistant's editor"
   assert.equal(simpleDraft({ ...base, conditions: [{ condition: "state", entity_id: "x", state: "on" }] }), null);
   assert.equal(simpleDraft({ ...base, triggers: [...base.triggers, { trigger: "sun", event: "sunset" }] }), null);
   assert.equal(simpleDraft({ ...base, actions: [{ action: "light.turn_on", target: { entity_id: "light.a" }, data: { brightness_pct: 50 } }] }), null);
-  assert.equal(simpleDraft({ ...base, actions: [...base.actions, { delay: "00:05:00" }] }), null);
+  assert.equal(simpleDraft({ ...base, actions: [...base.actions, { delay: "{{ states('input_number.wait') }}" }] }), null);
+  assert.equal(simpleDraft({ ...base, actions: [{ delay: { days: 1 } }] }), null);
+  assert.equal(simpleDraft({ ...base, actions: [{ delay: "00:05:00", enabled: false }] }), null);
+  assert.equal(simpleDraft({ ...base, actions: [{ action: "notify.mobile", data: { message: "hi", data: { push: { sound: "x" } } } }] }), null);
+  assert.equal(simpleDraft({ ...base, actions: [{ action: "notify.send_message", target: { entity_id: "notify.x" }, data: { message: "hi" } }] }), null);
+  assert.equal(simpleDraft({ ...base, actions: [{ action: "tts.speak", target: { entity_id: "tts.a" }, data: { media_player_entity_id: "media_player.b", message: "hi", cache: false } }] }), null);
+  assert.equal(simpleDraft({ ...base, triggers: [{ trigger: "time_pattern", minutes: "/5", seconds: 0 }] }), null);
+  assert.equal(simpleDraft({ ...base, triggers: [{ trigger: "time_pattern", minutes: "5" }] }), null);
+  assert.equal(simpleDraft({ ...base, triggers: [{ trigger: "numeric_state", entity_id: "sun.sun", attribute: "elevation", above: 1, below: 5 }] }), null);
+  assert.equal(simpleDraft({ ...base, triggers: [{ trigger: "numeric_state", entity_id: "sensor.t", below: 5 }] }), null);
   assert.equal(simpleDraft({ ...base, actions: [] }), null);
   assert.equal(simpleDraft({ ...base, actions: [{ action: "light.turn_on", target: { area_id: ["office", "kitchen"] } }] }), null);
   assert.equal(simpleDraft({ ...base, actions: [{ action: "light.turn_on", target: { area_id: "office", entity_id: "light.a" } }] }), null);
   assert.equal(simpleDraft({ ...base, actions: [{ action: "light.toggle", target: { area_id: "office" } }] }), null);
   assert.equal(simpleDraft({ ...base, actions: [{ action: "homeassistant.turn_off", target: { area_id: "office" } }] }), null);
   assert.equal(simpleDraft({ ...base, triggers: [{ trigger: "state", entity_id: "light.a", for: "00:05:00" }] }), null);
-  assert.equal(simpleDraft({ ...base, actions: [{ action: "notify.mobile", data: { message: "hi" } }] }), null);
   assert.equal(simpleDraft(null), null);
+});
+
+test("intervals, arriving / leaving and sun height round-trip", () => {
+  const cases = [
+    [{ kind: "interval", every: 15, unit: "minutes" }, { trigger: "time_pattern", minutes: "/15" }],
+    [{ kind: "interval", every: 2, unit: "hours" }, { trigger: "time_pattern", hours: "/2" }],
+    [{ kind: "zone", person: "person.tim", zone: "zone.home", zone_event: "leave" }, { trigger: "zone", entity_id: "person.tim", zone: "zone.home", event: "leave" }],
+    [{ kind: "elevation", direction: "below", degrees: -6 }, { trigger: "numeric_state", entity_id: "sun.sun", attribute: "elevation", below: -6 }],
+    [{ kind: "elevation", direction: "above", degrees: 10 }, { trigger: "numeric_state", entity_id: "sun.sun", attribute: "elevation", above: 10 }],
+  ];
+  for (const [trigger, config] of cases) {
+    const d = draft({ trigger, actions: [{ kind: "scene", entity_id: "scene.a" }] });
+    assert.deepEqual(draftToConfig(d).triggers, [config]);
+    const back = simpleDraft(draftToConfig(d)).trigger;
+    for (const [k, v] of Object.entries(trigger)) assert.equal(back[k], v, `${trigger.kind}.${k}`);
+  }
+  assert.deepEqual(describeAutomation({ triggers: [cases[3][1]] }).triggers, ["When the sun goes below -6°"]);
+  assert.deepEqual(describeAutomation({ triggers: [cases[0][1], cases[1][1], { trigger: "time_pattern", minutes: 5 }] }).triggers,
+    ["Every 15 min", "Every 2 h", "On a time pattern"]);
+});
+
+test("notifications, announcements and waits round-trip", () => {
+  const actions = [
+    { kind: "notify", service: "mobile_app_phone", message: "Door open", title: "Home" },
+    { kind: "delay", minutes: 90, seconds: 5 },
+    { kind: "announce", entity_id: "tts.google", player: "media_player.kitchen", message: "Dinner is ready" },
+    { kind: "notify", service: "notify", message: "No title" },
+  ];
+  const config = draftToConfig(draft({ actions }));
+  assert.deepEqual(config.actions, [
+    { action: "notify.mobile_app_phone", data: { message: "Door open", title: "Home" } },
+    { delay: "01:30:05" },
+    { action: "tts.speak", target: { entity_id: "tts.google" }, data: { media_player_entity_id: "media_player.kitchen", message: "Dinner is ready" } },
+    { action: "notify.notify", data: { message: "No title" } },
+  ]);
+  assert.deepEqual(simpleDraft(config).actions, actions.map(step));
+  assert.deepEqual(simpleDraft({ alias: "w", triggers: [{ trigger: "time", at: "07:00" }], actions: [{ delay: { minutes: 2, seconds: 30 } }] }).actions,
+    [step({ kind: "delay", minutes: 2, seconds: 30 })]);
+  assert.deepEqual(simpleDraft({ alias: "w", triggers: [{ trigger: "time", at: "07:00" }], actions: [{ delay: "05:00" }] }).actions,
+    [step({ kind: "delay", minutes: 5, seconds: 0 })]);
+  assert.deepEqual(describeAutomation(config, (id) => (id === "media_player.kitchen" ? "Kitchen speaker" : id)).actions[2], 'Announce "Dinner is ready" on Kitchen speaker');
+});
+
+test("problems for the new triggers and actions", () => {
+  const p = (trigger, actions = [{ kind: "scene", entity_id: "scene.a" }]) => draftProblems(draft({ trigger, actions }));
+  assert.deepEqual(p({ kind: "interval", every: 0, unit: "minutes" }), ["Every 1 to 59 minutes."]);
+  assert.deepEqual(p({ kind: "interval", every: 30, unit: "hours" }), ["Every 1 to 23 hours."]);
+  assert.deepEqual(p({ kind: "zone", person: "", zone: "" }), ["Choose who arrives or leaves.", "Choose the place."]);
+  assert.deepEqual(p({ kind: "elevation", degrees: "" }), ["Sun height is between -90° and 90°."]);
+  assert.deepEqual(p({ kind: "time", at: "07:00" }, [{ kind: "notify" }, { kind: "announce" }, { kind: "delay", minutes: 0, seconds: 0 }]), [
+    "Action 1: Choose who gets the notification.", "Action 1: Write the notification.",
+    "Action 2: Choose a text-to-speech voice.", "Action 2: Choose the speaker.", "Action 2: Write what to say.",
+    "Action 3: Wait at least a second.",
+  ]);
 });
 
 test("draft problems name what is missing", () => {

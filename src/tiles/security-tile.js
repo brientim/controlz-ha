@@ -1,20 +1,26 @@
 import { CzElement, escapeHtml } from "../base.js";
+import { openEntityHistory } from "../history.js";
 import { ICONS } from "../icons.js";
 import {
   alarmView,
   domainOf,
   formatSensorValue,
   friendlyName,
+  lockView,
   relativeTime,
   securityView,
   siblingSensor,
 } from "../model.js";
+import { lockTap } from "../prefs.js";
 import { sheetFrame } from "../sheet.js";
 import { TILE_STYLES } from "../styles.js";
 
 const MAX_CODE = 12;
 
-/** Locks, alarm panels, garage doors, door/window contacts and smoke/CO/leak sensors. */
+/**
+ * Locks, alarm panels, garage doors, door/window contacts and smoke/CO/leak sensors. A lock's button
+ * follows View → Lock button (ask first, instantly, or open the lock controls); tapping a lock opens them.
+ */
 export class SecurityTile extends CzElement {
   styles() {
     return TILE_STYLES;
@@ -56,8 +62,44 @@ export class SecurityTile extends CzElement {
     return { model, html };
   }
 
+  get _isLock() {
+    return domainOf(this._config.entity) === "lock";
+  }
+
+  /** Lock sheet (ControlZ lock detail): Lock / Unlock / Open, a code when the lock needs one, battery and history. */
+  _lockSheet() {
+    const entityId = this._config.entity;
+    const stateObj = this._hass.states[entityId];
+    const lock = lockView(stateObj);
+    const sec = securityView(entityId, stateObj);
+    const batteryId = siblingSensor(this._hass, entityId, "battery");
+    const code = this._code || "";
+    const ready = !lock.codeFormat || code.length > 0;
+    const disabled = lock.offline || lock.busy || !ready ? "disabled" : "";
+    const body = `
+      ${lock.codeFormat ? `<div class="sheet-section"><input type="password" class="code-input" data-action="code" autocomplete="off"
+        placeholder="Code" value="${escapeHtml(code)}" aria-label="Lock code" /></div>` : ""}
+      <div class="sheet-section"><div class="btn-wrap">
+        <button type="button" class="btn${lock.locked ? " secondary" : ""}" data-action="lock-do" data-service="lock" ${disabled} aria-pressed="${lock.locked}">🔒 Lock</button>
+        <button type="button" class="btn${lock.locked ? "" : " secondary"}" data-action="lock-do" data-service="unlock" ${disabled} aria-pressed="${!lock.locked && !lock.jammed}">🔓 Unlock</button>
+        ${lock.canOpen ? `<button type="button" class="btn secondary" data-action="lock-do" data-service="open" ${disabled}>🚪 Open</button>` : ""}
+      </div>
+      ${lock.jammed ? `<p class="error">The lock reports it is jammed.</p>` : ""}
+      ${batteryId ? `<p class="note">🔋 Battery ${escapeHtml(formatSensorValue(this._hass.states[batteryId]))}</p>` : ""}
+      ${this._alarmError ? `<p class="error">${escapeHtml(this._alarmError)}</p>` : ""}</div>
+      <div class="sheet-section"><div class="btn-wrap"><button type="button" class="btn secondary" data-action="lock-history">🕘 History</button></div></div>`;
+    return sheetFrame({
+      title: this._config.name || friendlyName(this._hass, entityId),
+      subtitle: `${sec.badge} · ${relativeTime(stateObj?.last_changed)}`,
+      body,
+      detailsEntity: entityId,
+      favorite: this.favoriteOn,
+    });
+  }
+
   /** Alarm keypad sheet (ControlZ Security room arm / disarm): code entry, then a mode or Disarm. */
   sheetBody() {
+    if (this._isLock) return this._lockSheet();
     const entityId = this._config.entity;
     const stateObj = this._hass.states[entityId];
     const alarm = alarmView(stateObj);
@@ -114,10 +156,31 @@ export class SecurityTile extends CzElement {
           this._openKeypad();
           return;
         }
+        if (this._isLock && (lockTap() === "sheet" || lockView(this._hass.states[entityId]).codeFormat)) {
+          this._openKeypad();
+          return;
+        }
         const name = friendlyName(this._hass, entityId);
-        if (action.confirm && !this.confirmAction(`${action.label} ${name}?`)) return;
+        const ask = this._isLock ? lockTap() === "confirm" && action.confirm : action.confirm;
+        if (ask && !this.confirmAction(`${action.label} ${name}?`)) return;
         this.callService(action.domain, action.service, { entity_id: entityId, ...(action.data || {}) });
       },
+      "lock-do": async (button) => {
+        const service = button.dataset.service;
+        if (service !== "lock" && lockTap() === "confirm"
+          && !this.confirmAction(`${service === "open" ? "Open" : "Unlock"} ${friendlyName(this._hass, entityId)}?`)) return;
+        const data = { entity_id: entityId, ...(this._code ? { code: this._code } : {}) };
+        this._code = "";
+        this._alarmError = null;
+        try {
+          await this.callService("lock", service, data);
+          this.closeSheet();
+        } catch (err) {
+          this._alarmError = err?.message || "The lock did not accept that.";
+          this._sheet?.refresh(true);
+        }
+      },
+      "lock-history": () => openEntityHistory(this, entityId),
       digit: (button) => {
         if ((this._code || "").length >= MAX_CODE) return;
         this._code = `${this._code || ""}${button.dataset.digit}`;
@@ -133,6 +196,10 @@ export class SecurityTile extends CzElement {
       },
       "input:code": (input) => {
         this._code = input.value;
+        if (this._isLock) {
+          for (const b of this._sheet?.shadowRoot.querySelectorAll('[data-action="lock-do"]') || []) b.disabled = !this._code;
+          return;
+        }
         const alarm = alarmView(this._hass.states[entityId]);
         const needsCode = alarm.armed ? alarm.disarmNeedsCode : alarm.armNeedsCode;
         for (const b of this._sheet?.shadowRoot.querySelectorAll('[data-action="alarm"]') || []) b.disabled = needsCode && !this._code;
@@ -153,7 +220,8 @@ export class SecurityTile extends CzElement {
   }
 
   onTileClick() {
-    if (this._isAlarm) this._openKeypad();
+    if (this._isAlarm || this._isLock) this._openKeypad();
+    else if (domainOf(this._config.entity) === "binary_sensor") openEntityHistory(this, this._config.entity);
     else this.moreInfo(this._config.entity);
   }
 }

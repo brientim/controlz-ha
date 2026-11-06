@@ -16,6 +16,7 @@ export const KIND = Object.freeze({
   CLIMATE: "climate",
   FAN: "fan",
   CAMERA: "camera",
+  MEDIA: "media",
   OTHER: "other",
 });
 
@@ -25,6 +26,7 @@ export const SECTIONS = Object.freeze([
   { id: "lights", title: "Lights", kinds: [KIND.LIGHT, KIND.SWITCH, KIND.OUTLET] },
   { id: "coverings", title: "Window Coverings", kinds: [KIND.COVER] },
   { id: "climate", title: "Climate", kinds: [KIND.CLIMATE, KIND.FAN] },
+  { id: "media", title: "Media", kinds: [KIND.MEDIA] },
   { id: "security", title: "Security", kinds: [KIND.SECURITY] },
   { id: "cameras", title: "Cameras", kinds: [KIND.CAMERA] },
   { id: "sensors", title: "Sensors", kinds: [KIND.MOTION, KIND.SENSOR] },
@@ -68,7 +70,6 @@ const SENSOR_BADGES = {
   power: "POWER",
 };
 const OTHER_DOMAINS = new Set([
-  "media_player",
   "humidifier",
   "vacuum",
   "valve",
@@ -126,6 +127,8 @@ export function classifyEntity(entityId, stateObj, entry) {
       return KIND.FAN;
     case "camera":
       return KIND.CAMERA;
+    case "media_player":
+      return KIND.MEDIA;
     default:
       return OTHER_DOMAINS.has(domain) ? KIND.OTHER : null;
   }
@@ -424,6 +427,23 @@ export function alarmView(stateObj) {
   };
 }
 
+const LOCK_OPEN = 1;
+
+/** Lock sheet model: state, whether it can unlatch (`lock.open`), and whether it needs a code. */
+export function lockView(stateObj) {
+  const a = stateObj?.attributes || {};
+  const state = stateObj?.state;
+  return {
+    state,
+    offline: isUnavailable(stateObj),
+    locked: state === "locked",
+    busy: state === "locking" || state === "unlocking" || state === "opening",
+    jammed: state === "jammed",
+    canOpen: ((a.supported_features ?? 0) & LOCK_OPEN) !== 0,
+    codeFormat: typeof a.code_format === "string" && a.code_format ? a.code_format : null,
+  };
+}
+
 const HAZARD_PHRASES = {
   smoke: "smoke detected",
   gas: "gas detected",
@@ -619,6 +639,40 @@ export function fanView(stateObj) {
   };
 }
 
+const MEDIA = { PAUSE: 1, VOLUME_SET: 4, VOLUME_MUTE: 8, PREVIOUS: 16, NEXT: 32, TURN_ON: 128, TURN_OFF: 256, SELECT_SOURCE: 2048, STOP: 4096, PLAY: 16384 };
+
+/** Media player tile face (ControlZ Sonos player): what is playing, transport and volume the player supports. */
+export function mediaView(stateObj) {
+  const a = stateObj?.attributes || {};
+  const f = a.supported_features ?? 0;
+  const can = (bit) => (f & bit) !== 0;
+  const state = stateObj?.state;
+  const offline = isUnavailable(stateObj);
+  const off = state === "off" || state === "standby";
+  const playing = state === "playing" || state === "buffering";
+  const volume = num(a.volume_level);
+  const title = a.media_title || a.app_name || (playing || state === "paused" ? a.source : "") || "";
+  return {
+    offline,
+    off,
+    playing,
+    badge: offline ? "OFFLINE" : upperWords(state || "idle"),
+    title,
+    artist: a.media_artist || a.media_series_title || a.media_album_name || "",
+    volume: volume == null ? null : Math.round(volume * 100),
+    muted: !!a.is_volume_muted,
+    playPause: !off && (can(MEDIA.PAUSE) || can(MEDIA.PLAY)),
+    previous: !off && can(MEDIA.PREVIOUS),
+    next: !off && can(MEDIA.NEXT),
+    volumeSet: !off && can(MEDIA.VOLUME_SET) && volume != null,
+    mute: !off && can(MEDIA.VOLUME_MUTE),
+    power: can(MEDIA.TURN_ON) && can(MEDIA.TURN_OFF),
+    sources: can(MEDIA.SELECT_SOURCE) && Array.isArray(a.source_list) ? a.source_list : [],
+    source: a.source ?? null,
+    speaker: a.device_class === "speaker" || (!a.device_class && /speaker|sonos|homepod|echo/i.test(a.friendly_name || "")),
+  };
+}
+
 /** Camera tile face: snapshot path (Home Assistant camera proxy, token included) and state chip. */
 export function cameraView(stateObj) {
   const offline = isUnavailable(stateObj);
@@ -760,6 +814,124 @@ export function roomReadings(hass, items, unit = "°C") {
   const temperature = temps.length ? `${Math.round(average(temps) * 10) / 10}${tempUnit || unit}` : null;
   const humidity = hums.length ? `${Math.round(average(hums))}%` : null;
   return { temperature, humidity, text: [temperature, humidity && `💧${humidity}`].filter(Boolean).join(" · ") };
+}
+
+/**
+ * Room status chips under a room's title (ControlZ room sensor banner): motion now (or when it was
+ * last seen), open doors / windows / unlocked locks and hazards from the security rules, and what
+ * the thermostats are doing. `level` picks the colour: insecure, warning, motion, heat, cool, info.
+ */
+export function roomStatus(hass, items, now = Date.now()) {
+  const states = hass?.states || {};
+  const chips = [];
+  const name = (id) => friendlyName(hass, id);
+  const motion = items.filter((i) => i.kind === KIND.MOTION && !isUnavailable(states[i.entity_id]));
+  const moving = motion.filter((i) => isOn(states[i.entity_id]));
+  if (moving.length) {
+    chips.push({ key: "motion", level: "motion", icon: "🚶", entity_id: moving[0].entity_id,
+      text: moving.length === 1 ? `Motion · ${name(moving[0].entity_id)}` : `Motion · ${moving.length} sensors` });
+  } else if (motion.length) {
+    const last = motion.map((i) => states[i.entity_id]).sort((a, b) => Date.parse(b.last_changed) - Date.parse(a.last_changed))[0];
+    const ago = relativeTime(last.last_changed, now);
+    if (ago) chips.push({ key: "motion", level: "info", icon: "🚶", entity_id: last.entity_id, text: `No motion · last ${ago === "Now" ? "just now" : ago}` });
+  }
+  const alerts = items
+    .filter((i) => i.kind === KIND.SECURITY)
+    .map((i) => ({ id: i.entity_id, hit: bannerSeverity(i.entity_id, states[i.entity_id]) }))
+    .filter((a) => a.hit);
+  for (const level of ["insecure", "warning"]) {
+    const group = alerts.filter((a) => a.hit.severity === level);
+    if (group.length > 2) chips.push({ key: level, level, icon: level === "insecure" ? "🔓" : "🪟", entity_id: group[0].id, text: `${group.length} need attention` });
+    else for (const a of group) chips.push({ key: a.id, level, icon: level === "insecure" ? "🔓" : "🪟", entity_id: a.id, text: `${name(a.id)} ${a.hit.phrase}` });
+  }
+  const unit = hass?.config?.unit_system?.temperature || "°C";
+  for (const item of items.filter((i) => i.kind === KIND.CLIMATE)) {
+    const c = climateView(states[item.entity_id], unit);
+    if (c.offline || c.off) continue;
+    const target = c.range ? `${formatTemp(c.low)}–${formatTemp(c.high)}` : formatTemp(c.target);
+    const doing = c.heating ? "Heating" : c.cooling ? "Cooling" : c.badge.charAt(0) + c.badge.slice(1).toLowerCase();
+    chips.push({ key: item.entity_id, level: c.heating ? "heat" : c.cooling ? "cool" : "info", icon: "🌡️", entity_id: item.entity_id,
+      text: `${doing} to ${target}${c.current != null ? ` · now ${formatTemp(c.current)}` : ""}` });
+  }
+  return chips;
+}
+
+/**
+ * Whether a device counts as "on" for the room filter: lights, switches, outlets, fans and motion
+ * that are on, open coverings, thermostats not off, open / unlocked security devices, media playing.
+ * Null for things that are not on or off (scenes, automations, readings, cameras) and offline devices.
+ */
+export function itemIsOn(hass, item) {
+  const s = hass?.states?.[item.entity_id];
+  if (isUnavailable(s)) return null;
+  switch (item.kind) {
+    case KIND.LIGHT: case KIND.SWITCH: case KIND.OUTLET: case KIND.FAN: case KIND.MOTION:
+      return isOn(s);
+    case KIND.COVER:
+      return coverIsOpen(s);
+    case KIND.CLIMATE:
+      return s.state !== "off";
+    case KIND.SECURITY:
+      return bannerSeverity(item.entity_id, s) != null;
+    case KIND.MEDIA:
+      return s.state === "playing" || s.state === "on" || s.state === "buffering";
+    case KIND.OTHER:
+      return !["off", "idle", "standby", "closed", "docked"].includes(s.state);
+    default:
+      return null;
+  }
+}
+
+/** Room page filter (ControlZ LightFilter + device type filter). */
+export const ROOM_FILTERS = Object.freeze([
+  { id: "all", label: "All" },
+  { id: "on", label: "On" },
+  { id: "off", label: "Off" },
+  { id: "favorites", label: "♥" },
+]);
+
+/** Items left by the room filter (`all` / `on` / `off` / `favorites`) and a section id (null = every section). */
+export function filterRoomItems(hass, items, { filter = "all", section = null, favorites = new Set() } = {}) {
+  const kinds = section ? SECTIONS.find((s) => s.id === section)?.kinds : null;
+  return items.filter((i) => {
+    if (kinds && !kinds.includes(i.kind)) return false;
+    if (filter === "favorites") return favorites.has(i.entity_id);
+    if (filter === "on") return itemIsOn(hass, i) === true;
+    if (filter === "off") return itemIsOn(hass, i) === false;
+    return true;
+  });
+}
+
+/** Tile items of `kinds` that are in no area (house-wide pages list them under "No room"), by name. */
+export function looseItems(hass, kinds, hideEntities = new Set()) {
+  const wanted = new Set(kinds);
+  const out = [];
+  for (const [entityId, entry] of Object.entries(hass?.entities || {})) {
+    if (hideEntities.has(entityId) || areaOfEntity(hass, entityId)) continue;
+    const kind = classifyEntity(entityId, hass.states?.[entityId], entry);
+    if (wanted.has(kind)) out.push({ entity_id: entityId, kind });
+  }
+  return out.sort((a, b) => friendlyName(hass, a.entity_id).localeCompare(friendlyName(hass, b.entity_id)));
+}
+
+/** Sensors page "By type" groups (ControlZ Sensor Report By Type), in this order; empty groups dropped. */
+export const SENSOR_TYPES = Object.freeze([
+  { id: "motion", title: "Motion" },
+  { id: "temperature", title: "Temperature", classes: ["temperature"] },
+  { id: "humidity", title: "Humidity", classes: ["humidity"] },
+  { id: "illuminance", title: "Light level", classes: ["illuminance"] },
+  { id: "air", title: "Air quality", classes: ["carbon_dioxide", "pm25", "pm10", "volatile_organic_compounds", "aqi"] },
+  { id: "power", title: "Power", classes: ["power"] },
+  { id: "pressure", title: "Pressure", classes: ["pressure"] },
+]);
+
+export function sensorTypeGroups(hass, items) {
+  return SENSOR_TYPES.map((type) => ({
+    ...type,
+    items: items.filter((i) => (type.id === "motion"
+      ? i.kind === KIND.MOTION
+      : i.kind === KIND.SENSOR && type.classes.includes(hass?.states?.[i.entity_id]?.attributes?.device_class))),
+  })).filter((g) => g.items.length);
 }
 
 /**

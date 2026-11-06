@@ -1,5 +1,7 @@
 import { CzElement, escapeHtml } from "./base.js";
+import { confirmScenes, runScene } from "./hidden.js";
 import { domainOf, friendlyName, sceneLabel } from "./model.js";
+import { openScriptSheet } from "./preset-editor.js";
 import { openSceneSheet } from "./scene-sheet.js";
 import { TOKENS } from "./styles.js";
 
@@ -33,7 +35,7 @@ const STYLES = `
 
 /**
  * Compact scene row for a room page (ControlZ scene header): one chip per scene / script;
- * tap runs it, right-click (long-press on Android) opens the scene sheet (scripts: Home Assistant's more-info).
+ * tap runs it, right-click (long-press on Android) opens the scene or preset sheet.
  */
 export class SceneStrip extends CzElement {
   styles() {
@@ -42,6 +44,7 @@ export class SceneStrip extends CzElement {
 
   view() {
     const areaName = this._config.area_name || "";
+    const asks = confirmScenes(this._config);
     const items = (this._config.entities || []).map((entityId) => {
       const stateObj = this._hass.states[entityId];
       const domain = domainOf(entityId);
@@ -51,6 +54,7 @@ export class SceneStrip extends CzElement {
         glyph: (RUN[domain] || RUN.script)[2],
         running: domain === "script" && stateObj?.state === "on",
         ran: this._ran === entityId,
+        asks: asks.has(entityId),
       };
     });
     const html = `<div class="strip" role="group" aria-label="Scenes">${items.map((i) => `
@@ -58,7 +62,7 @@ export class SceneStrip extends CzElement {
         data-action="run" data-entity="${escapeHtml(i.id)}" title="Run ${escapeHtml(i.label)} (right-click for details)">
         <span class="glyph" aria-hidden="true">${i.glyph}</span>
         <span class="label">${escapeHtml(i.label)}</span>
-        <span class="play" aria-hidden="true">▶</span>
+        <span class="play" aria-hidden="true">${i.asks ? "?▶" : "▶"}</span>
       </button>`).join("")}</div>`;
     return { model: items, html };
   }
@@ -71,7 +75,7 @@ export class SceneStrip extends CzElement {
       if (!chip) return;
       ev.preventDefault();
       if (domainOf(chip.dataset.entity) === "scene") openSceneSheet(this, chip.dataset.entity);
-      else this.moreInfo(chip.dataset.entity);
+      else openScriptSheet(this, chip.dataset.entity);
     };
     this.shadowRoot.addEventListener("contextmenu", this._onContext);
   }
@@ -80,8 +84,7 @@ export class SceneStrip extends CzElement {
     return {
       run: (chip) => {
         const entityId = chip.dataset.entity;
-        const [domain, service] = RUN[domainOf(entityId)] || RUN.script;
-        this.callService(domain, service, { entity_id: entityId });
+        if (!runScene(this._hass, this._config, entityId, friendlyName(this._hass, entityId))) return;
         this._ran = entityId;
         this.requestRender(true);
         clearTimeout(this._ranTimer);

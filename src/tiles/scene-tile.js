@@ -1,16 +1,18 @@
 import { CzElement, escapeHtml } from "../base.js";
+import { runScene } from "../hidden.js";
 import { domainOf, friendlyName, relativeTime } from "../model.js";
+import { openScriptSheet } from "../preset-editor.js";
 import { openSceneSheet } from "../scene-sheet.js";
 import { SCENE_STYLES, TILE_STYLES } from "../styles.js";
 
 const KINDS = {
-  scene: { icon: "🎬", label: "Scene", run: ["scene", "turn_on"] },
-  script: { icon: "📜", label: "Script", run: ["script", "turn_on"] },
+  scene: { icon: "🎬", label: "Scene" },
+  script: { icon: "📜", label: "Script" },
 };
 
 /**
  * Scene / script tile in the ControlZ automation-tile style (Run). Tapping a scene opens the scene
- * sheet (export for admins); a script opens Home Assistant's dialog. Automations have their own tile.
+ * sheet (export for admins); a script opens the preset sheet. Automations have their own tile.
  */
 export class SceneTile extends CzElement {
   styles() {
@@ -47,15 +49,12 @@ export class SceneTile extends CzElement {
   get actions() {
     const entityId = this._config.entity;
     return {
-      run: () => {
-        const [domain, service] = (KINDS[domainOf(entityId)] || KINDS.script).run;
-        this.callService(domain, service, { entity_id: entityId });
-      },
+      run: () => runScene(this._hass, this._config, entityId, friendlyName(this._hass, entityId)),
     };
   }
 
   onTileClick() {
     if (domainOf(this._config.entity) === "scene") openSceneSheet(this, this._config.entity);
-    else this.moreInfo(this._config.entity);
+    else openScriptSheet(this, this._config.entity);
   }
 }

@@ -1,4 +1,4 @@
-import { hiddenLists } from "./hidden.js";
+import { hiddenLists, roomExcluded } from "./hidden.js";
 import { entitiesForArea } from "./model.js";
 
 /**
@@ -24,6 +24,13 @@ export function visibleItems(hass, areaId, config) {
   const { entities } = hiddenLists(config);
   const items = areaItems(hass, areaId);
   return entities.size ? items.filter((i) => !entities.has(i.entity_id)) : items;
+}
+
+/** What the room tile controls and counts: visible items minus `room_exclude`. */
+export function masterItems(hass, areaId, config) {
+  const excluded = roomExcluded(config);
+  const items = visibleItems(hass, areaId, config);
+  return excluded.size ? items.filter((i) => !excluded.has(i.entity_id)) : items;
 }
 
 export const itemsKey = (items) => items.map((i) => `${i.entity_id}:${i.kind}`).join(",");

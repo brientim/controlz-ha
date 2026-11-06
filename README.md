@@ -41,7 +41,9 @@ Every page has a **View** menu (top right; in the sidebar next to the title) to 
 
 **Scale** shrinks everything below the page header together — tiles, controls, text and spacing — so tiles keep their look, controls keep fitting, and more tiles fit on screen (60% shows about 1.7× as many per row). The header, View menu and controls sheets stay full size. Set a dashboard default with `tile_scale` (any value from 0.4 to 1.5). At 50–60% text and buttons are small; 80% is a good middle ground on touch screens.
 
-**Start page** (ControlZ Startup Room): open any room, Favorites or Automations and choose **View → Start on …** to make this device open there. It only applies when the dashboard is opened, so going back to All Rooms afterwards stays on All Rooms. **Start on All Rooms** clears it.
+**Lock button**, **Accent** and **Corners** (ControlZ accessibility and colour scheme settings): what a lock tile's button does (see [Security banner](#security-banner)), the accent colour for buttons and selections (ControlZ indigo, your Home Assistant theme colour, blue, teal, green, amber, rose or slate), and rounded or square tiles. Like the rest of the menu, they are saved on this device only.
+
+**Start page** (ControlZ Startup Room): open any room, Favorites, Automations or a house page and choose **View → Start on …** to make this device open there. It only applies when the dashboard is opened, so going back to All Rooms afterwards stays on All Rooms. **Start on All Rooms** clears it.
 
 **Version and Help**: the bottom of the View menu shows the installed ControlZ HA version and **? Help**: what's new in this version, a short guide to each feature with a screenshot, and links to this guide, the release notes and the issue tracker. Screenshots and links follow the installed version; the screenshots load from GitHub, so they need an internet connection.
 
@@ -72,8 +74,59 @@ Hidden items stay dimmed while you edit so you can bring them back; press **Done
 - **All / On / Off** (ControlZ light filter) shows every room, the rooms with lights or outlets on, or the rooms where everything is off. **On** also lists every light, switch, outlet and fan that is on right now, across the house. The choice is kept on this device.
 - **All lights off** turns off every light and wall switch in the rooms on the page (after asking). Outlets such as a kettle are left alone.
 - **Maintenance** (ControlZ Low Battery Report): a chip appears when a battery is under `battery_threshold` % (default 20) or a device is unavailable. Tap it for the list, then a device for its details. Battery sensors count even though Home Assistant files them as diagnostic entities. Hide the chip with `show_maintenance: false`.
+- **Scenes & presets**: scenes and scripts that are in no room (house-wide, like ControlZ's Home / Away / Bedtime presets) show as chips. Admins get **+ New preset**.
+- **📢 Announce** appears when Home Assistant has a text-to-speech voice and a media player (see [Media and announcements](#media-and-announcements)). Turn it off with `show_announce: false` on the card.
+- **Running**: while a script runs, a green banner names it with **Cancel** (room pages show their own scripts).
 
 ![Maintenance](https://raw.githubusercontent.com/brientim/controlz-ha/main/dev/screenshots/maintenance.png)
+
+### Room pages: status, filters and the room tile
+
+- **Status chips** under the room name (ControlZ room sensor banner): motion now (or when it was last seen), open doors and windows, unlocked locks and alarms, and what the thermostat is doing ("Heating to 21° · now 19.5°"). Tap one for that device. **📈 History** opens the room's sensors (below). Hide the row with `show_room_status: false` on the room card.
+- **Filters** (ControlZ light filter and device types): **All / On / Off / ♥** and one device type (Lights, Window Coverings, Climate, Media, Security, …). "On" means lit, open, playing, heating, unlocked or moving. The choice is kept on this device and applies to every room. Hide the row with `show_filter: false`.
+- **What the room tile controls** (ControlZ Room Master exclusions): in **View → Edit rooms & favorites…**, admins get a bulb button under each light on a room page. Turn it grey and the room tile's switch, brightness, colours and green badge leave that light alone (handy for a night light or a lamp on its own schedule); it keeps its own tile. Saved for everyone as `room_exclude`.
+
+![Room filters](https://raw.githubusercontent.com/brientim/controlz-ha/main/dev/screenshots/room-filters.png)
+
+### History: sensors, rooms and security
+
+History comes from Home Assistant's recorder (ControlZ Sensor History and Security Trigger History), so it covers everything Home Assistant has kept (10 days by default).
+
+- **A sensor**: tap a temperature, humidity, light, motion, door or window tile for its chart over 6 hours, 24 hours or 7 days, with the low, high and average (motion and doors: how many times, and for how long in all).
+- **A room**: **📈 History** on a room page shows every sensor in the room with a small chart and its low / high.
+- **Security history**: tap the security banner, then **What happened (history)**: every door, window, lock, alarm and motion change, newest first and grouped by day. Filter by time, type (Doors, Windows, Locks, Motion, Alarms), room and a search, then **Export CSV**. It follows the banner's `security_include` / `security_exclude` and hidden devices.
+
+![Security history](https://raw.githubusercontent.com/brientim/controlz-ha/main/dev/screenshots/security-history.png)
+
+### Scenes and presets
+
+- **+ New scene** (admins, on a room's Scenes heading): set the room how you want it, tick the lights, switches, coverings, fans and thermostats to include, name it, and it is saved as an ordinary Home Assistant scene in that room, set to how those devices are right now (ControlZ scene capture).
+- **Update to how it is now** in a scene's sheet saves the current state of the scene's devices into it (after asking).
+- **Ask before running** (admins, in a scene's or preset's sheet) makes everyone confirm before it runs (ControlZ "confirm before run"; saved as `confirm_scenes`). Its chip shows ?▶.
+- **Presets** (ControlZ preset sequences): **+ New preset** on All Rooms or the Automations view. A preset is a name, an icon, a room (or house-wide) and steps run in order: scenes, waits, scripts, devices, whole rooms, notifications and announcements. It is saved as an ordinary Home Assistant script, so voice assistants and automations can run it too. Tap a preset (or right-click its chip) for its steps, **Run** / **Cancel**, and for admins **Edit**, **Open in Home Assistant** and **Delete**. Scripts with choices, repeats or fields open Home Assistant's script editor instead.
+
+![New scene](https://raw.githubusercontent.com/brientim/controlz-ha/main/dev/screenshots/scene-capture.png)
+
+### House pages: coverings, cameras, sensors and weather
+
+Like ControlZ's system rooms, the dashboard adds a page for each of these when Home Assistant has something to show (turn one off with `coverings_view`, `cameras_view`, `sensors_view` or `weather_view: false`):
+
+- **Window Coverings**: every covering by room, how many are open, and **Open all**, **Stop all** and **Close all** (open and close ask first).
+- **Cameras**: every camera by room.
+- **Sensors**: **By room**, **By type** (Motion, Temperature, Humidity, Light level, Air quality, Power, Pressure; ControlZ Sensor Report) or **Batteries & offline** (every battery level, lowest first, and offline devices).
+- **Weather**: current conditions (feels like, humidity, wind, pressure, UV), the next 24 hours, the next 7 days with a temperature range bar, and the sun (up or down, sunrise, sunset, dawn and dusk) from `sun.sun`. It uses the first weather entity, or `weather_entity`. Forecasts stay live while the page is open.
+
+With the sidebar they sit under Favorites and Automations.
+
+![Weather](https://raw.githubusercontent.com/brientim/controlz-ha/main/dev/screenshots/weather.png)
+
+### Media and announcements
+
+**Media players** get their own tile (ControlZ Sonos player): what is playing, previous / play-pause / next, and on Large a volume slider with a speaker icon and a violet fill. The tile turns violet while playing. Tap it (or its controls button) for volume, mute, source, power and **Announce**.
+
+**Announce** (ControlZ AirPlay / Sonos text to speech): tick the speakers, type what to say or tap a saved phrase, and Home Assistant speaks it with `tts.speak`. **Save this phrase** keeps it on this device. It needs a text-to-speech voice in Home Assistant (Settings → Voice assistants).
+
+![Announce](https://raw.githubusercontent.com/brientim/controlz-ha/main/dev/screenshots/announce.png)
 
 ### Automations
 
@@ -84,7 +137,12 @@ Automations have their own **Automations** view (grouped by room, then "No room"
 - **What this will do** — the automation's triggers, conditions and actions in plain words ("When Front Door changes to on", "Turn on Hall Light").
 - For Home Assistant admins: **Edit**, **Delete**, and in the details sheet **Duplicate**, **Traces** and **Open in Home Assistant**.
 
-**+ New automation** (Automations view, or **+ New** on a room's Automations heading) opens a simple editor like ControlZ's: a name, a room, one trigger (a time, a device changing, or sunrise / sunset with an offset) and one or more actions, run in order (activate a scene, run a script, control a device, or control a room — e.g. turn off all the lights in the Kitchen). Device pickers are grouped by room in your dashboard's room order. It saves through Home Assistant's own automation config API, so the result is an ordinary Home Assistant automation. **Edit** uses the same editor when an automation is that simple; anything with conditions, waits, extra data or templates opens Home Assistant's automation editor instead, so nothing is ever rewritten in a simpler form. Turn the view off with `automations_view: false`; room pages still list their automations.
+**+ New automation** (Automations view, or **+ New** on a room's Automations heading) opens a simple editor like ControlZ's Events: a name, a room, one trigger and one or more actions, run in order.
+
+- **When**: at a time; a device changing; sunrise / sunset with an offset; **every** so many minutes or hours; a person **arriving at or leaving** a place (a Home Assistant zone, from the companion app); or the **sun height** going below or above some degrees (-6° is dusk).
+- **Then**: activate a scene, run a script, control a device, control a room (e.g. turn off all the lights in the Kitchen), **send a notification** (to a phone or `notify.notify`), **announce** a message on a speaker, or **wait** some minutes and seconds.
+
+Device pickers are grouped by room in your dashboard's room order. It saves through Home Assistant's own automation config API, so the result is an ordinary Home Assistant automation. **Edit** uses the same editor when an automation is that simple; anything with conditions, choices, waiting for something to happen, extra data or templates opens Home Assistant's automation editor instead, so nothing is ever rewritten in a simpler form. Turn the view off with `automations_view: false`; room pages still list their automations.
 
 ### Export and import
 
@@ -111,6 +169,8 @@ Unavailable devices, hidden entities and diagnostic entities never raise the ban
 
 **Alarm panels**: tap the alarm tile (or its ARM / DISARM button) for the ControlZ keypad. It offers the arm modes the panel supports (Away, Home, Night, Vacation, Bypass) and a number keypad or code field when the panel needs a code. Panels that arm without a code arm Away in one tap from the tile.
 
+**Locks**: tap a lock tile for the lock sheet (Lock, Unlock, Open when the lock can unlatch, a code field when it needs one, battery and **History**). What the tile's LOCK / UNLOCK button does is set per device in **View → Lock button** (ControlZ lock tap mode): **Ask first** (ask before unlocking; the default), **Instant**, or **Controls** (open the lock sheet).
+
 ### Manual install
 
 Download `controlz-ha.js` from the [latest release](https://github.com/brientim/controlz-ha/releases/latest), copy it to `config/www/`, and add `/local/controlz-ha.js` as a **JavaScript module** under **Settings → Dashboards → Resources**. Don't combine this with a Marketplace / HACS install, or two copies of the cards load.
@@ -121,8 +181,10 @@ Download `controlz-ha.js` from the [latest release](https://github.com/brientim/
 |------|---------|
 | `custom:controlz-rooms` (strategy) | Generates the whole dashboard: All Rooms plus one view per area. The view tabs act as the room strip. |
 | `custom:controlz-room-card` | Room tile for one area. Green chip = lights on (lights only, not switches/outlets), orange = outlets on, blue = coverings open. Rooms with lights and coverings control both. |
-| `custom:controlz-room-grid` | A full room page: room tile, then Scenes, Lights, Window Coverings, Climate, Security, Cameras, Sensors, Automations and Other. |
-| `custom:controlz-home-grid` | All Rooms: security banner (tap for the device list), All / On / Off filter, All lights off, maintenance chip, and a room tile per area. |
+| `custom:controlz-room-grid` | A full room page: status chips, room tile, filters, then Scenes, Lights, Window Coverings, Climate, Media, Security, Cameras, Sensors, Automations and Other. |
+| `custom:controlz-home-grid` | All Rooms: security banner (tap for the device list and history), All / On / Off filter, All lights off, Announce, maintenance chip, house-wide scenes & presets, and a room tile per area. |
+| `custom:controlz-house-grid` | A house page (`page: coverings`, `cameras` or `sensors`): every covering, camera or sensor by room. |
+| `custom:controlz-weather-grid` | Weather: now, the next 24 hours, the next 7 days and the sun (`weather_entity` optional). |
 | `custom:controlz-favorites-grid` | Favorites: your favorite rooms, scenes and devices (per Home Assistant user). |
 | `custom:controlz-automations-grid` | Automations by room: run, enable, details; admins also new / edit / duplicate / delete. |
 | `custom:controlz-rooms-app` | Sidebar layout: room sidebar plus the selected room (use in a panel view; the strategy adds it for `room_nav: sidebar`). |
@@ -137,7 +199,7 @@ Download `controlz-ha.js` from the [latest release](https://github.com/brientim/
 | Thin | One row: on/off + controls button (coverings-only rooms: Open / Stop / Close) |
 | Compact | Badge chips under the name; on/off, plus Open / Stop / Close for rooms with coverings |
 
-**Sliders.** Brightness sliders have a lightbulb and an amber fill (white on lit tiles); covering position sliders have a blinds icon and a blue fill; fan speed sliders have a fan icon and a teal fill.
+**Sliders.** Brightness sliders have a lightbulb and an amber fill (white on lit tiles); covering position sliders have a blinds icon and a blue fill; fan speed sliders have a fan icon and a teal fill; volume sliders have a speaker icon and a violet fill.
 
 **Room readings.** Large room tiles and the room page title show the room's temperature and humidity (💧): the average of its temperature / humidity sensors, else its motion sensors' own thermometers, else its thermostat.
 
@@ -163,11 +225,12 @@ Download `controlz-ha.js` from the [latest release](https://github.com/brientim/
 | Thermostat tile | `climate.*` |
 | Fan tile | `fan.*` |
 | Security camera | `camera.*` |
-| Scene | `scene.*`, `script.*` |
+| Media tile | `media_player.*` |
+| Scene / preset | `scene.*`, `script.*` |
 | Automation tile | `automation.*` |
-| Other | media player, humidifier, vacuum, valve, water heater |
+| Other | humidifier, vacuum, valve, water heater |
 
-Hidden entities and config/diagnostic entities are skipped. Tapping a light opens the compact ControlZ light sheet (on/off, brightness, Warm / Neutral / Cool, colours); **More details** there opens Home Assistant's own dialog. Other device tiles open Home Assistant's dialog directly. ControlZ sheets fit any window: their content scrolls when the window is short, and they become a bottom sheet on phones.
+Hidden entities and config/diagnostic entities are skipped. Tapping a light opens the compact ControlZ light sheet (on/off, brightness, Warm / Neutral / Cool, colours); sensors, doors and windows open their history; locks the lock sheet; media players the player sheet. **More details** in a sheet opens Home Assistant's own dialog; the remaining tiles open it directly. ControlZ sheets fit any window: their content scrolls when the window is short, and they become a bottom sheet on phones.
 
 ### Room icons
 
@@ -199,8 +262,15 @@ strategy:
   security_banner_rooms: [office]  # with security_banner: rooms — room pages that also show the banner
   security_include: []             # only these entity ids raise the security banner
   security_exclude: [binary_sensor.office_window]   # never raise the banner
+  room_exclude: [light.night_lamp] # lights the room tile leaves alone (edit mode's bulb button writes this)
+  confirm_scenes: [script.away]    # scenes / presets that ask before running (their sheet sets this)
   favorites_view: true             # false = no Favorites view
   automations_view: true           # false = no Automations view (room pages still list automations)
+  coverings_view: true             # false = no Window Coverings page
+  cameras_view: true               # false = no Cameras page
+  sensors_view: true               # false = no Sensors page
+  weather_view: true               # false = no Weather page
+  weather_entity: weather.home     # which weather entity the Weather page shows (default: the first)
   battery_threshold: 20            # All Rooms maintenance chip: batteries under this % are low
   show_maintenance: true           # false = no low battery / offline chip
   icon_source: controlz            # controlz | area
@@ -227,6 +297,9 @@ tile_size: thin
 - New areas or devices moved between areas appear after a dashboard reload. With tabs, a reordered room list also follows after a reload (the page reloads itself after **Done**).
 - Editing, duplicating and deleting automations needs a Home Assistant admin (Home Assistant's automation config API is admin-only). YAML automations without an `id` can be run and enabled, but not read or edited here. The same goes for exporting and importing scenes and automations, and for YAML scenes without an `id`. Import does not handle scripts or Home Assistant YAML tags such as `!secret`.
 - Favorites changed on one device show on another after it reloads.
+- History needs Home Assistant's recorder (on by default) and only goes back as far as it keeps (`purge_keep_days`, 10 days by default). Entities the recorder excludes have no chart.
+- Presets are Home Assistant scripts, read and saved by their object id (`script.bedtime` → `bedtime`). A script whose entity id was renamed away from its key, or one in YAML files, opens Home Assistant's editor.
+- Saved phrases, the lock button, accent and corners are kept per device (like the rest of the View menu), not per user.
 - Tested on Home Assistant 2026.10.
 
 ## Development
@@ -238,7 +311,7 @@ npm run build       # dist/controlz-ha.js
 npm run serve       # then open http://127.0.0.1:8765/dev/harness.html (add ?fresh=1 to clear saved hides)
 ```
 
-`dev/harness.html` renders the dashboard against a mock `hass` (`dev/fixture.js`); service calls change the fixture state and show in a log overlay. The mock also fakes the automation and scene config APIs, frontend user data (favorites) and entity registry updates for the browser session (`?fresh=1` resets them). Query parameters: `?view=room-office&size=thin&dark=1&nav=sidebar&admin=0&open=menu|security|edit|maintenance|light-sheet|room-sheet|climate-sheet|fan-sheet|alarm-sheet|automation-sheet|editor-sheet|scene-sheet|export-sheet|import-sheet|help-sheet|security-settings` (`&fill=1` fills in the editor; `&section=automations` opens a help topic; `&mode=rooms&rooms=office` for the banner settings). `&banner=every_room` sets `security_banner` for the session. `?fit=1` measures every tile at every size and reports any that are off-contract, clipped, overflowing or off-screen; add `&scale=0.6` and `&nav=sidebar` to check those too.
+`dev/harness.html` renders the dashboard against a mock `hass` (`dev/fixture.js`); service calls change the fixture state and show in a log overlay. The mock also fakes the automation, scene and script config APIs, recorder history, weather forecasts, frontend user data (favorites) and entity registry updates for the browser session (`?fresh=1` resets them). Query parameters: `?view=room-office&size=thin&dark=1&nav=sidebar&admin=0&open=menu|security|edit|maintenance|light-sheet|room-sheet|climate-sheet|fan-sheet|alarm-sheet|lock-sheet|media-sheet|automation-sheet|editor-sheet|scene-sheet|export-sheet|import-sheet|help-sheet|security-settings|sensor-history-sheet|room-history-sheet|security-history-sheet|scene-capture-sheet|announce-sheet|script-sheet|preset-sheet` (`&fill=1` or `&fill=2` fills in the editor and `&save=1` saves it; `&section=automations` opens a help topic; `&mode=rooms&rooms=office` for the banner settings). `&banner=every_room` sets `security_banner` for the session, `&prefs={"accent":"teal"}` sets this device's View menu prefs, `&run=script.good_morning` starts a script, and `&probe=script.` prints matching entities and saved configs. `?fit=1` measures every tile at every size and reports any that are off-contract, clipped, overflowing or off-screen (plus `window.__errors`); add `&scale=0.6` and `&nav=sidebar` to check those too.
 
 **Deploy a dev build without HACS** (copies to `config/www` over SSH and creates the dashboard):
 

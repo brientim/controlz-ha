@@ -35,6 +35,13 @@ import {
   roomReadings,
   showsSecurityBanner,
   stepTarget,
+  roomStatus,
+  filterRoomItems,
+  itemIsOn,
+  lockView,
+  mediaView,
+  looseItems,
+  sensorTypeGroups,
 } from "../src/model.js";
 
 const hass = makeFixture();
@@ -52,7 +59,7 @@ test("classifies entities into ControlZ tile kinds", () => {
   assert.equal(kindOf("binary_sensor.lounge_motion"), KIND.MOTION);
   assert.equal(kindOf("sensor.kitchen_humidity"), KIND.SENSOR);
   assert.equal(kindOf("scene.office_focus"), KIND.SCENE);
-  assert.equal(kindOf("media_player.lounge_tv"), KIND.OTHER);
+  assert.equal(kindOf("media_player.lounge_tv"), KIND.MEDIA);
 });
 
 test("skips hidden and diagnostic entities", () => {
@@ -174,7 +181,7 @@ test("new tile kinds and sections", () => {
   assert.equal(kindOf("fan.bedroom_1_ceiling_fan"), KIND.FAN);
   assert.equal(kindOf("camera.front_door"), KIND.CAMERA);
   const lounge = groupBySection(entitiesForArea(hass, "living_room")).map((s) => s.id);
-  assert.deepEqual(lounge, ["scenes", "lights", "coverings", "climate", "sensors", "automations", "other"]);
+  assert.deepEqual(lounge, ["scenes", "lights", "coverings", "climate", "media", "sensors", "automations"]);
   const scenes = groupBySection(entitiesForArea(hass, "office")).find((s) => s.id === "scenes");
   assert.equal(scenes.items.some((i) => i.entity_id.startsWith("automation.")), false);
 });
@@ -362,4 +369,57 @@ test("formatting helpers", () => {
   assert.equal(relativeTime("2026-11-04T02:59:30Z", now), "Now");
   assert.equal(relativeTime("2026-11-04T02:52:00Z", now), "8m ago");
   assert.equal(relativeTime("2026-11-04T01:00:00Z", now), "2h ago");
+});
+
+test("media view: now playing, transport and volume from supported features", () => {
+  const speaker = mediaView(hass.states["media_player.kitchen_speaker"]);
+  assert.deepEqual(
+    [speaker.playing, speaker.title, speaker.artist, speaker.volume, speaker.previous, speaker.next, speaker.volumeSet, speaker.speaker, speaker.sources.length],
+    [true, "Harvest Moon", "Neil Young", 35, true, true, true, true, 3],
+  );
+  const tv = mediaView(hass.states["media_player.lounge_tv"]);
+  assert.deepEqual([tv.title, tv.previous, tv.playPause, tv.speaker], ["Netflix", false, true, false]);
+  const off = mediaView({ state: "off", attributes: { supported_features: 23485, volume_level: 0.5 } });
+  assert.deepEqual([off.off, off.playPause, off.volumeSet, off.power, off.badge], [true, false, false, true, "OFF"]);
+});
+
+test("lock view: open support and code", () => {
+  assert.deepEqual(lockView(hass.states["lock.front_door"]), {
+    state: "locked", offline: false, locked: true, busy: false, jammed: false, canOpen: false, codeFormat: null,
+  });
+  const fancy = lockView({ state: "unlocking", attributes: { supported_features: 1, code_format: "^\\d{4}$" } });
+  assert.deepEqual([fancy.busy, fancy.canOpen, fancy.codeFormat], [true, true, "^\\d{4}$"]);
+});
+
+test("room filter: on / off / favorites and a device type", () => {
+  const items = entitiesForArea(hass, "office");
+  const ids = (opts) => filterRoomItems(hass, items, opts).map((i) => i.entity_id);
+  assert.deepEqual(ids({ filter: "on" }), [
+    "light.office_colour_light", "light.office_desk_lamp", "switch.office_light_switch", "cover.office_roller_blind", "binary_sensor.office_window",
+  ]);
+  assert.deepEqual(ids({ filter: "off" }), ["binary_sensor.office_motion"]);
+  assert.deepEqual(ids({ section: "lights", filter: "on" }), ["light.office_colour_light", "light.office_desk_lamp", "switch.office_light_switch"]);
+  assert.deepEqual(ids({ filter: "favorites", favorites: new Set(["light.office_desk_lamp", "scene.office_relax"]) }), ["light.office_desk_lamp", "scene.office_relax"]);
+  assert.equal(ids({}).length, items.length);
+  assert.equal(itemIsOn(hass, { entity_id: "light.mums_bedside_lamp", kind: KIND.LIGHT }), null);
+  assert.equal(itemIsOn(hass, { entity_id: "media_player.kitchen_speaker", kind: KIND.MEDIA }), true);
+  assert.equal(itemIsOn(hass, { entity_id: "climate.living_room_thermostat", kind: KIND.CLIMATE }), true);
+  assert.equal(itemIsOn(hass, { entity_id: "scene.office_relax", kind: KIND.SCENE }), null);
+});
+
+test("house pages: devices with no room, sensors by type", () => {
+  assert.deepEqual(looseItems(hass, [KIND.LIGHT]).map((i) => i.entity_id), ["light.unassigned"]);
+  assert.deepEqual(looseItems(hass, [KIND.LIGHT], new Set(["light.unassigned"])), []);
+  const sensors = ["office", "kitchen", "living_room"].flatMap((a) => entitiesForArea(hass, a)).filter((i) => i.kind === KIND.SENSOR || i.kind === KIND.MOTION);
+  assert.deepEqual(sensorTypeGroups(hass, sensors).map((g) => [g.id, g.items.length]), [["motion", 2], ["temperature", 1], ["humidity", 1]]);
+});
+
+test("room status chips: motion, open doors and windows, thermostats", () => {
+  const status = (area) => roomStatus(hass, entitiesForArea(hass, area)).map((c) => [c.level, c.text]);
+  assert.deepEqual(status("office"), [["info", "No motion · last 8m ago"], ["warning", "Office Window open"]]);
+  const lounge = status("living_room");
+  assert.deepEqual(lounge[0], ["motion", "Motion · Lounge Motion Sensor"]);
+  assert.deepEqual(lounge[1], ["heat", "Heating to 21° · now 19.5°"]);
+  assert.deepEqual(status("garage"), [["insecure", "Garage Side Lock unlocked"]]);
+  assert.deepEqual(status("kitchen"), []);
 });

@@ -25,7 +25,7 @@ const STYLES = `
   .glyph ha-icon { --mdc-icon-size: 18px; }
   .room-name { font-weight: 600; }
   .room-meta { font-size: 0.75rem; color: var(--cz-text-secondary); }
-  .source { font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: rgba(79,70,229,0.12); color: var(--cz-primary); white-space: nowrap; }
+  .source { font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: color-mix(in srgb, var(--cz-primary) 12%, transparent); color: var(--cz-primary); white-space: nowrap; }
   .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
   input[type="search"], select { font: inherit; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--cz-border); background: var(--cz-card-bg); color: var(--cz-text); }
   input[type="search"] { flex: 1; min-width: 160px; }

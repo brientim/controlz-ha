@@ -4,10 +4,11 @@ const KINDS = {
   brightness: { icon: ICONS.bulb, title: "Brightness", min: 1 },
   position: { icon: ICONS.blinds, title: "Position (100% is open)", min: 0 },
   speed: { icon: ICONS.fan, title: "Fan speed", min: 1 },
+  volume: { icon: ICONS.speaker, title: "Volume", min: 0 },
 };
 
 /**
- * Slider row shared by every tile. Brightness, covering position and fan speed must never look
+ * Slider row shared by every tile. Brightness, covering position, fan speed and volume must never look
  * alike (they sit together on mixed room tiles), so each kind has its own leading icon and fill colour.
  */
 export function rangeRow({ kind, action, value, label, extraClass = "", disabled = false }) {

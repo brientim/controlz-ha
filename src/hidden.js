@@ -16,6 +16,8 @@ let override = null;
 let orderOverride = null;
 let entitiesOverride = null;
 let bannerOverride = null;
+let excludeOverride = null;
+let confirmOverride = null;
 let editing = false;
 
 /** Key for automations without a room in `entities_order`. */
@@ -150,6 +152,50 @@ export async function setSecurityBanner(hass, { mode, rooms = [] }) {
   bannerOverride = { mode: strategy.security_banner || "all_rooms", rooms: strategy.security_banner_rooms || [] };
   window.dispatchEvent(new CustomEvent(HIDDEN_EVENT, { detail: { security_banner: bannerOverride } }));
   return bannerOverride;
+}
+
+/**
+ * Lights the room tile leaves alone (ControlZ Room Master exclusions, `room_exclude`): still shown
+ * and controllable on their own, but not switched, dimmed or counted by the room tile.
+ */
+export const roomExcluded = (config = {}) => new Set(excludeOverride || config.room_exclude || []);
+
+export async function setRoomExcluded(hass, entityId, exclude) {
+  const strategy = await saveStrategy(hass, "change what the room tile controls", (s) => {
+    const list = new Set(s.room_exclude || []);
+    if (exclude) list.add(entityId);
+    else list.delete(entityId);
+    s.room_exclude = [...list].sort();
+    if (!s.room_exclude.length) delete s.room_exclude;
+    return s;
+  });
+  excludeOverride = strategy.room_exclude || [];
+  window.dispatchEvent(new CustomEvent(HIDDEN_EVENT, { detail: { room_exclude: excludeOverride } }));
+  return excludeOverride;
+}
+
+/** Scenes and scripts that ask before running (ControlZ "confirm before run", `confirm_scenes`), for everyone on the dashboard. */
+export const confirmScenes = (config = {}) => new Set(confirmOverride || config.confirm_scenes || []);
+
+export async function setSceneConfirm(hass, entityId, ask) {
+  const strategy = await saveStrategy(hass, "change which scenes ask first", (s) => {
+    const list = new Set(s.confirm_scenes || []);
+    if (ask) list.add(entityId);
+    else list.delete(entityId);
+    s.confirm_scenes = [...list].sort();
+    if (!s.confirm_scenes.length) delete s.confirm_scenes;
+    return s;
+  });
+  confirmOverride = strategy.confirm_scenes || [];
+  window.dispatchEvent(new CustomEvent(HIDDEN_EVENT, { detail: { confirm_scenes: confirmOverride } }));
+  return confirmOverride;
+}
+
+/** Run a scene or script, asking first when it is in `confirm_scenes`. False when the user said no. */
+export function runScene(hass, config, entityId, name) {
+  if (confirmScenes(config).has(entityId) && !window.confirm(`Run "${name}"?`)) return false;
+  hass.callService(entityId.split(".")[0], "turn_on", { entity_id: entityId });
+  return true;
 }
 
 /** True when this page session changed hidden rooms or room order (tabs need a reload to follow). */

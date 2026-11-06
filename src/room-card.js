@@ -1,4 +1,4 @@
-import { visibleItems } from "./area-cache.js";
+import { masterItems, visibleItems } from "./area-cache.js";
 import { CzElement, escapeHtml, fireEvent, navigate } from "./base.js";
 import { rangeRow, syncRange } from "./controls.js";
 import { ICONS } from "./icons.js";
@@ -34,7 +34,7 @@ export class RoomCard extends CzElement {
   }
 
   _summary() {
-    return roomSummary(this._hass, visibleItems(this._hass, this._config.area, this._config));
+    return roomSummary(this._hass, masterItems(this._hass, this._config.area, this._config));
   }
 
   _readings() {

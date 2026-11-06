@@ -1,10 +1,11 @@
 import {
-  NAVS, PREFS_EVENT, SCALE_MAX, SCALE_MIN, SCALE_STEP, SIZES,
-  effectiveNav, effectiveScale, effectiveSize, readPrefs, startPage, writePrefs,
+  LOCK_TAPS, NAVS, PREFS_EVENT, SCALE_MAX, SCALE_MIN, SCALE_STEP, SIZES,
+  effectiveNav, effectiveScale, effectiveSize, lockTap, readPrefs, startPage, writePrefs,
 } from "./prefs.js";
 
 const escapeAttr = (value) =>
   String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+import { ACCENTS, CORNERS, accentId, cornersId } from "./appearance.js";
 import { openHelpSheet } from "./help.js";
 import { setEditing } from "./hidden.js";
 import { SECURITY_SETTINGS_EVENT } from "./security-settings.js";
@@ -23,7 +24,7 @@ const STYLES = `
   }
   .trigger svg { width: 16px; height: 16px; }
   .menu {
-    position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 220px;
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 250px;
     background: var(--cz-card-bg); color: var(--cz-text); border: 1px solid var(--cz-border);
     border-radius: 14px; box-shadow: 0 12px 32px rgba(0,0,0,0.2); padding: 10px;
     max-height: calc(100vh - 120px); max-height: calc(100dvh - 120px); overflow-y: auto;
@@ -33,7 +34,7 @@ const STYLES = `
   .seg { display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: var(--cz-bg-secondary); margin-bottom: 10px; }
   .seg button {
     flex: 1; border: none; background: transparent; color: var(--cz-text); padding: 7px 8px; border-radius: 8px;
-    font: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+    font: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer; white-space: nowrap;
   }
   .seg button[aria-pressed="true"] { background: var(--cz-primary); color: #fff; }
   .scale-row { display: flex; align-items: center; gap: 8px; margin: 0 4px 6px; }
@@ -57,6 +58,13 @@ const STYLES = `
     margin: 4px -10px -10px; padding: 8px 14px; border-top: 1px solid var(--cz-border);
     font-size: 0.75rem; color: var(--cz-text-secondary);
   }
+  .accents { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 4px 10px; }
+  .accent {
+    width: 26px; height: 26px; border-radius: 50%; padding: 0; cursor: pointer; background: var(--swatch);
+    border: 2px solid var(--cz-card-bg); box-shadow: 0 0 0 1px var(--cz-border);
+    color: #fff; font: inherit; font-size: 0.6rem; font-weight: 800;
+  }
+  .accent[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--cz-text); }
   .help-btn {
     border: 1px solid var(--cz-border); background: var(--cz-bg-secondary); color: var(--cz-text); border-radius: 999px;
     padding: 4px 12px; font: inherit; font-size: 0.78rem; font-weight: 600; cursor: pointer;
@@ -131,7 +139,7 @@ export class ViewMenu extends HTMLElement {
     const nav = effectiveNav(this.getAttribute("default-nav"));
     const scale = Math.round(effectiveScale(this.getAttribute("default-scale")) * 100);
     const prefs = readPrefs();
-    const custom = ["tile_size", "room_nav", "tile_scale"].some((k) => prefs[k] != null);
+    const custom = ["tile_size", "room_nav", "tile_scale", "lock_tap", "accent", "corners"].some((k) => prefs[k] != null);
     const pageId = this.getAttribute("page-id");
     const start = startPage();
     const startName = start ? prefs.start_name || start : "All Rooms";
@@ -159,6 +167,16 @@ export class ViewMenu extends HTMLElement {
         <div class="presets" role="group" aria-label="Scale presets">${[50, 60, 80, 100].map((p) =>
           `<button type="button" data-scale="${p / 100}" aria-pressed="${p === scale}">${p}%</button>`).join("")}</div>
         ${this.hasAttribute("show-nav") ? `<div class="label">Rooms</div>${this._segment("nav", NAVS, nav)}` : ""}
+        <div class="label">Lock button</div>
+        <div class="seg" role="group" aria-label="Lock button">${LOCK_TAPS.map((t) =>
+          `<button type="button" data-lock-tap="${t.id}" aria-pressed="${t.id === lockTap()}">${t.label}</button>`).join("")}</div>
+        <div class="label">Accent</div>
+        <div class="accents" role="group" aria-label="Accent colour">${ACCENTS.map((a) =>
+          `<button type="button" class="accent${a.id === "ha" ? " ha" : ""}" data-accent="${a.id}" aria-pressed="${a.id === accentId()}" title="${a.label}"
+            aria-label="${a.label}" style="--swatch:${a.value}">${a.id === "ha" ? "HA" : ""}</button>`).join("")}</div>
+        <div class="label">Corners</div>
+        <div class="seg" role="group" aria-label="Corners">${CORNERS.map((c) =>
+          `<button type="button" data-corners="${c.id}" aria-pressed="${c.id === cornersId()}">${c.label}</button>`).join("")}</div>
         <p class="note">Saved on this device only.</p>
         ${custom ? `<button type="button" class="reset" data-reset>Use dashboard defaults</button>` : ""}
         ${startHtml}
@@ -198,7 +216,10 @@ export class ViewMenu extends HTMLElement {
     if (target.dataset.size) writePrefs({ tile_size: target.dataset.size });
     if (target.dataset.scale) writePrefs({ tile_scale: Number(target.dataset.scale) });
     if (target.dataset.nav) writePrefs({ room_nav: target.dataset.nav });
-    if (target.hasAttribute("data-reset")) writePrefs({ tile_size: null, room_nav: null, tile_scale: null });
+    if (target.dataset.lockTap) writePrefs({ lock_tap: target.dataset.lockTap === "confirm" ? null : target.dataset.lockTap });
+    if (target.dataset.accent) writePrefs({ accent: target.dataset.accent === "controlz" ? null : target.dataset.accent });
+    if (target.dataset.corners) writePrefs({ corners: target.dataset.corners === "round" ? null : target.dataset.corners });
+    if (target.hasAttribute("data-reset")) writePrefs({ tile_size: null, room_nav: null, tile_scale: null, lock_tap: null, accent: null, corners: null });
     if (target.hasAttribute("data-start")) {
       const id = this.getAttribute("page-id");
       writePrefs(id === "rooms" ? { start_page: null, start_name: null } : { start_page: id, start_name: this.getAttribute("page-name") });
