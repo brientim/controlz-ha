@@ -7,8 +7,20 @@ globalThis.window ??= new EventTarget();
 const {
   areasOrder, currentDashboardPath, entitiesOrder, hiddenLists, movedOrder, reorderSubset, roomsChangedThisSession,
   securityBannerSettings, setAreasOrder, setEntitiesOrder, setHidden, setSecurityBanner, roomExcluded, setRoomExcluded,
-  confirmScenes, runScene, setSceneConfirm,
+  confirmScenes, runScene, setSceneConfirm, HOME_SCENES, hiddenScenes, setScenesHidden,
 } = await import("../src/hidden.js");
+
+test("scene rows hidden for everyone save to hide_scenes", async () => {
+  assert.deepEqual([...hiddenScenes({ hide_scenes: ["office"] })], ["office"]);
+  const hass = mockHass({ type: "custom:controlz-rooms" });
+  await setScenesHidden(hass, HOME_SCENES, true);
+  await setScenesHidden(hass, "office", true);
+  assert.deepEqual(hass.saved.at(-1).config.strategy.hide_scenes, ["__home", "office"]);
+  assert.deepEqual([...hiddenScenes({})], ["__home", "office"]);
+  await setScenesHidden(hass, HOME_SCENES, false);
+  await setScenesHidden(hass, "office", false);
+  assert.equal("hide_scenes" in hass.saved.at(-1).config.strategy, false);
+});
 
 test("scenes that ask first: confirm_scenes, and runScene asks only for those", async () => {
   const hass = mockHass({ type: "custom:controlz-rooms" });

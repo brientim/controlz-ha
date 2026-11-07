@@ -381,6 +381,10 @@
             "  actions:", "    - action: light.turn_off", "      target:", "        area_id: office", "",
           ].join("\n"));
         }
+        for (const sel of (params.get("click") || "").split(",").filter(Boolean)) {
+          deepFind(sel)?.click();
+          await new Promise((r) => setTimeout(r, 400));
+        }
         if (params.get("probe")) {
           const prefix = params.get("probe");
           const pre = document.createElement("pre");

@@ -310,6 +310,18 @@ test("security banner placement: All Rooms only, every room, chosen rooms or off
   assert.deepEqual(where({ mode: "rooms" }), [true, false, false]);
   assert.deepEqual(where({ mode: "off", rooms: ["office"] }), [false, false, false]);
   assert.deepEqual(where({ mode: "sometimes" }), [true, false, false]);
+  const pages = (settings) => ["page:favorites", "page:weather"].map((page) => showsSecurityBanner(settings, page));
+  assert.deepEqual(pages({ mode: "all_rooms" }), [false, false]);
+  assert.deepEqual(pages({ mode: "every_room" }), [true, true]);
+  assert.deepEqual(pages({ mode: "rooms", rooms: ["office", "page:weather"] }), [false, true]);
+});
+
+test("banner pages: Favorites, Automations and house pages that exist", async () => {
+  const { bannerPages } = await import("../src/house-pages.js");
+  assert.deepEqual(bannerPages(hass, {}).map((p) => p.id),
+    ["page:favorites", "page:automations", "page:coverings", "page:cameras", "page:sensors", "page:weather"]);
+  assert.deepEqual(bannerPages(hass, { favorites_view: false, weather_view: false, cameras_view: false }).map((p) => p.id),
+    ["page:automations", "page:coverings", "page:sensors"]);
 });
 
 test("security banner severity mirrors ControlZ", () => {

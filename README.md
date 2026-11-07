@@ -100,6 +100,8 @@ History comes from Home Assistant's recorder (ControlZ Sensor History and Securi
 
 ### Scenes and presets
 
+- **Collapse**: tap the chevron (or the heading) on a room's **Scenes** row, All Rooms' **Scenes & presets** or Favorites' Scenes to fold it down to its heading and count. Each row is remembered on this device.
+- **Hide** (admins): in **View → Edit rooms & favorites…**, **Hide for everyone** on a Scenes row hides that room's scene row (or All Rooms' Scenes & presets) for everyone on the dashboard; it stays dimmed in edit mode so you can **Show for everyone** again. Saved as `hide_scenes`. To hide single scenes, use the eye on the scene in edit mode.
 - **+ New scene** (admins, on a room's Scenes heading): set the room how you want it, tick the lights, switches, coverings, fans and thermostats to include, name it, and it is saved as an ordinary Home Assistant scene in that room, set to how those devices are right now (ControlZ scene capture).
 - **Update to how it is now** in a scene's sheet saves the current state of the scene's devices into it (after asking).
 - **Ask before running** (admins, in a scene's or preset's sheet) makes everyone confirm before it runs (ControlZ "confirm before run"; saved as `confirm_scenes`). Its chip shows ?▶.
@@ -154,7 +156,7 @@ Admins only. **Export** in an automation's or a scene's details sheet shows its 
 
 The banner at the top of All Rooms looks at every Home Assistant device that gets a Security tile, in every area, and names the ones that need attention. Tap it for the full list; tap a device for its details.
 
-**Where it shows**: admins choose **View → Security banner…**: **All Rooms only** (default), **Every room** (also at the top of every room page), **Chosen rooms** (All Rooms plus the rooms you tick) or **Off**. It is saved in the dashboard config (`security_banner`, `security_banner_rooms`), so it applies on every device. A banner on a room page still shows the whole house, so you see an open garage door from the bedroom. With the sidebar, the All Rooms badge keeps showing the security state even when the banner is off.
+**Where it shows**: admins choose **View → Security banner…**: **All Rooms only** (default), **Every room and page** (also at the top of every room page and of Favorites, Automations, Window Coverings, Cameras, Sensors and Weather), **Chosen rooms and pages** (All Rooms plus the rooms and pages you tick) or **Off**. It is saved in the dashboard config (`security_banner`, `security_banner_rooms`; pages are saved as `page:favorites`, `page:weather`, …), so it applies on every device. A banner on any page still shows the whole house, so you see an open garage door from the bedroom. With the sidebar, the All Rooms badge keeps showing the security state even when the banner is off.
 
 ![Security banner settings](https://raw.githubusercontent.com/brientim/controlz-ha/main/dev/screenshots/security-banner-settings.png)
 
@@ -258,8 +260,9 @@ strategy:
   entities_order:                  # device tile order per room (edit mode writes this); others follow by name
     office: [light.office_desk_lamp, light.office_colour_light]
   scenes_style: chips              # chips | tiles
-  security_banner: all_rooms       # all_rooms | every_room | rooms | off (View → Security banner… sets this)
-  security_banner_rooms: [office]  # with security_banner: rooms — room pages that also show the banner
+  security_banner: all_rooms       # all_rooms | every_room (rooms and pages) | rooms | off (View → Security banner… sets this)
+  security_banner_rooms: [office, page:favorites]   # with security_banner: rooms — rooms (area ids) and pages that also show it
+  hide_scenes: [office, __home]    # scene rows hidden for everyone (area ids; __home = All Rooms' Scenes & presets)
   security_include: []             # only these entity ids raise the security banner
   security_exclude: [binary_sensor.office_window]   # never raise the banner
   room_exclude: [light.night_lamp] # lights the room tile leaves alone (edit mode's bulb button writes this)

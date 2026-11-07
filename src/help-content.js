@@ -19,14 +19,11 @@ export const helpLinks = (version) => [
 ];
 
 export const WHATS_NEW = {
-  version: "0.8.0",
+  version: "0.8.1",
   items: [
-    "History: tap a sensor, door or window for its chart; 📈 History on a room; security history (filter, search, CSV) from the banner.",
-    "Room pages: status chips (motion, open doors, thermostats) and All / On / Off / ♥ plus device-type filters.",
-    "+ New scene saves a room as it is now; presets run scenes, waits and steps in order (saved as scripts).",
-    "Automations: every N minutes or hours, arrive / leave, sun height; notify, announce and wait actions.",
-    "Window Coverings, Cameras, Sensors and Weather pages; media player tiles and 📢 Announce with saved phrases.",
-    "View menu: lock button behaviour, accent colour and corners. Admins: choose which lights the room tile controls, and scenes that ask first.",
+    "Scenes rows collapse: tap the chevron on a room's Scenes or All Rooms' Scenes & presets (remembered on this device).",
+    "Admins can hide a Scenes row for everyone in Edit rooms & favorites.",
+    "The security banner can show on Favorites, Automations, Window Coverings, Cameras, Sensors and Weather (View → Security banner…).",
   ],
 };
 
@@ -76,6 +73,8 @@ export const HELP_SECTIONS = [
     title: "Scenes and presets",
     text: "Set a room how you like it, then + New scene on its Scenes heading saves it as a Home Assistant scene (admins). Presets run scenes and other steps in order, with waits between, like ControlZ's Home, Away and Bedtime.",
     steps: [
+      "Tap the chevron on a Scenes row to collapse it on this device.",
+      "Admins: Edit rooms & favorites → Hide for everyone on a Scenes row hides it for the whole dashboard.",
       "+ New preset is on All Rooms and the Automations page.",
       "In a scene's or preset's sheet, admins can make it ask before running.",
       "While a preset runs, a green banner offers Cancel.",
@@ -126,8 +125,8 @@ export const HELP_SECTIONS = [
     title: "Security and maintenance",
     text: "The security banner turns red for open doors, unlocked locks and smoke or leak alarms, and amber for open windows. Tap it for the list. On All Rooms, a Maintenance chip appears when a battery is low or a device is unavailable; tap it for the list.",
     steps: [
-      "Admins: View → Security banner… shows it on All Rooms only, every room, chosen rooms, or turns it off.",
-      "A banner on a room page still covers the whole house.",
+      "Admins: View → Security banner… shows it on All Rooms only, every room and page, chosen rooms and pages, or turns it off.",
+      "Pages include Favorites, Automations, Window Coverings, Cameras, Sensors and Weather; every banner covers the whole house.",
       "Tap a lock for Lock, Unlock and its history; View → Lock button sets whether its button asks first.",
     ],
     image: "security-banner-settings.png",

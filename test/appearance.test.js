@@ -16,6 +16,17 @@ const fakeRoot = () => {
   return { props, style: { setProperty: (k, v) => props.set(k, v), removeProperty: (k) => props.delete(k) } };
 };
 
+test("collapsed scene rows toggle per device", async () => {
+  const { collapsedSections, isCollapsed, toggleCollapsed } = await import("../src/prefs.js");
+  assert.equal(isCollapsed("scenes:office"), false);
+  toggleCollapsed("scenes:office");
+  toggleCollapsed("scenes:__home");
+  assert.deepEqual(collapsedSections(), ["scenes:__home", "scenes:office"]);
+  toggleCollapsed("scenes:office");
+  toggleCollapsed("scenes:__home");
+  assert.deepEqual(collapsedSections(), []);
+});
+
 test("accent and corners default to ControlZ and set nothing", () => {
   const root = fakeRoot();
   applyAppearance(root);

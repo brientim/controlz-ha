@@ -542,7 +542,7 @@ export const SECURITY_BANNER_MODES = Object.freeze([
   { id: "off", label: "Off" },
 ]);
 
-/** Whether the banner shows on All Rooms (`areaId` null) or on the room page of `areaId`. */
+/** Whether the banner shows on All Rooms (`areaId` null), the room page of `areaId`, or a page (`page:favorites`, …). */
 export function showsSecurityBanner({ mode, rooms } = {}, areaId = null) {
   const known = SECURITY_BANNER_MODES.some((m) => m.id === mode) ? mode : "all_rooms";
   if (known === "off") return false;
