@@ -1,9 +1,10 @@
 import { escapeHtml } from "./base.js";
 import { CzPage } from "./grids.js";
+import { ICONS } from "./icons.js";
 import { formatTemp } from "./model.js";
 import { dailyRows, forecastTypes, hourlyRows, pickWeather, sunView, weatherNow } from "./weather-model.js";
 
-export const WEATHER_ICON = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.79 1.42-1.41zM1 10.5h3v2H1v-2zm10-9.95h2v2.95h-2V.55zm8.04 2.495l1.408 1.407-1.79 1.79-1.407-1.408 1.789-1.789zM17.24 18.16l1.79 1.8 1.41-1.41-1.8-1.79-1.4 1.4zM20 10.5h3v2h-3v-2zm-8-5a6 6 0 100 12 6 6 0 000-12zm-1 16.95h2V19.5h-2v2.95zm-7.45-3.91l1.41 1.41 1.79-1.8-1.41-1.41-1.79 1.8z"/></svg>`;
+const WEATHER_ICON = ICONS.weather;
 
 const time = (t) => (t ? new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—");
 const hour = (t) => new Date(t).toLocaleTimeString([], { hour: "numeric" });
@@ -60,6 +61,10 @@ export class WeatherGrid extends CzPage {
         // Older Home Assistant: the forecast attribute below is used instead.
       }
     }
+  }
+
+  bannerArea() {
+    return "page:weather";
   }
 
   _entity() {

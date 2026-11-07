@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ControlZ HA — Facebook post</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0;
+    padding: 32px 16px;
+    background: #f0f2f5;
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #050505;
+  }
+  .toolbar {
+    max-width: 600px;
+    margin: 0 auto 16px;
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+  .toolbar button {
+    border: 0;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font: inherit;
+    font-weight: 600;
+    background: #1877f2;
+    color: #fff;
+    cursor: pointer;
+  }
+  .toolbar button.copied { background: #42b72a; }
+  .post {
+    max-width: 600px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
+    overflow: hidden;
+  }
+  .head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px 0;
+  }
+  .avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ffd45e, #f7852f);
+    display: grid;
+    place-items: center;
+    font-size: 20px;
+  }
+  .name { font-weight: 600; }
+  .meta { font-size: 13px; color: #65676b; }
+  .body { padding: 12px 16px; }
+  .body h1 { font-size: 17px; margin: 0 0 6px; }
+  .body p { margin: 0 0 10px; }
+  .body ul { margin: 0 0 12px; padding-left: 20px; }
+  .body li { margin-bottom: 6px; }
+  .body code {
+    font: 13px ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: #f0f2f5;
+    padding: 1px 4px;
+    border-radius: 4px;
+  }
+  .note {
+    background: #e7f3ff;
+    border-left: 4px solid #1877f2;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 0 0 12px;
+  }
+  .body a { color: #1877f2; text-decoration: none; }
+  .tags { color: #1877f2; }
+  .photos {
+    display: grid;
+    gap: 2px;
+    background: #fff;
+  }
+  .photos img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .photos figcaption {
+    font-size: 13px;
+    color: #65676b;
+    padding: 4px 16px 8px;
+  }
+  .actions {
+    display: flex;
+    justify-content: space-around;
+    border-top: 1px solid #ced0d4;
+    margin: 0 16px;
+    padding: 6px 0;
+    color: #65676b;
+    font-weight: 600;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <button id="copy" type="button">Copy post text</button>
+</div>
+
+<article class="post">
+  <header class="head">
+    <div class="avatar" aria-hidden="true">🏠</div>
+    <div>
+      <div class="name">ControlZ HA</div>
+      <div class="meta">Just now · 🌐</div>
+    </div>
+  </header>
+
+  <div class="body" id="post-text">
+    <h1>ControlZ HA: Rooms and Tiles for Home Assistant 🏠</h1>
+    <p>ControlZ-style room tiles for your Home Assistant dashboard, built automatically from your Areas.</p>
+    <ul>
+      <li><strong>Available in the Marketplace.</strong> Install it from Settings → Marketplace in one click, and updates show up under Settings → Updates.</li>
+      <li><strong>Set up automatically, out of the box.</strong> Add one line (<code>type: custom:controlz-rooms</code>) and it builds the whole dashboard from your Areas: All Rooms, one page per room, Favorites and Automations. There's nothing to lay out by hand.</li>
+      <li><strong>Resizable.</strong> A scale slider runs from 50% to 120%, with quick 60 / 80 / 100% buttons. Everything shrinks together, so you can fit more tiles on a wall tablet without anything looking squashed.</li>
+      <li><strong>3 tile sizes.</strong> Choose Large, Thin or Compact. Each size has a fixed height, so the grid always stays neat.</li>
+      <li><strong>Saved per device.</strong> A wall tablet can use Compact with the sidebar while your phone keeps Large tiles with tabs.</li>
+      <li><strong>Security banner</strong> at a glance: Insecure, Check, Motion or Secure.</li>
+      <li><strong>Favorites for each person.</strong> Every household member keeps their own list, on every device.</li>
+      <li><strong>Automations by room.</strong> Run, enable or disable them, and create simple new ones without leaving the dashboard.</li>
+      <li><strong>Room sidebar or tabs,</strong> plus light, cover, fan and thermostat controls in ControlZ style.</li>
+    </ul>
+    <p class="note">📌 <strong>Note:</strong> Since Home Assistant 2026.11, HACS is built in as the Marketplace (Settings → Marketplace). It's the same catalog under a new name. If you're still on 2026.10 or older, add the repo in HACS as a custom repository with type Dashboard.</p>
+    <p>🔗 <a href="https://github.com/brientim/controlz-ha">https://github.com/brientim/controlz-ha</a></p>
+    <p class="tags">#HomeAssistant #SmartHome #HomeAutomation #ControlZ</p>
+  </div>
+
+  <div class="photos">
+    <figure style="margin:0">
+      <img src="screenshots/sliders-all-rooms.png" alt="All Rooms with Large tiles and the security banner">
+      <figcaption>All Rooms, Large tiles</figcaption>
+    </figure>
+    <figure style="margin:0">
+      <img src="screenshots/view-menu-slider.png" alt="View menu with tile size, scale slider and rooms layout">
+      <figcaption>View menu: tile size, scale and rooms layout</figcaption>
+    </figure>
+  </div>
+
+  <footer class="actions">
+    <span>👍 Like</span>
+    <span>💬 Comment</span>
+    <span>↗ Share</span>
+  </footer>
+</article>
+
+<script>
+  const button = document.getElementById('copy');
+  button.addEventListener('click', async () => {
+    const root = document.getElementById('post-text');
+    const lines = [];
+    for (const node of root.children) {
+      if (node.tagName === 'UL') {
+        for (const li of node.children) lines.push('• ' + li.textContent.trim());
+        lines.push('');
+      } else {
+        lines.push(node.textContent.trim(), '');
+      }
+    }
+    await navigator.clipboard.writeText(lines.join('\n').trim());
+    button.textContent = 'Copied';
+    button.classList.add('copied');
+    setTimeout(() => {
+      button.textContent = 'Copy post text';
+      button.classList.remove('copied');
+    }, 1500);
+  });
+</script>
+</body>
+</html>

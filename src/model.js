@@ -537,8 +537,8 @@ export function securityBanner(hass, options) {
  */
 export const SECURITY_BANNER_MODES = Object.freeze([
   { id: "all_rooms", label: "All Rooms only" },
-  { id: "every_room", label: "Every room" },
-  { id: "rooms", label: "Chosen rooms" },
+  { id: "every_room", label: "Every room and page" },
+  { id: "rooms", label: "Chosen rooms and pages" },
   { id: "off", label: "Off" },
 ]);
 

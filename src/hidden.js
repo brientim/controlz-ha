@@ -18,6 +18,7 @@ let entitiesOverride = null;
 let bannerOverride = null;
 let excludeOverride = null;
 let confirmOverride = null;
+let scenesOverride = null;
 let editing = false;
 
 /** Key for automations without a room in `entities_order`. */
@@ -172,6 +173,26 @@ export async function setRoomExcluded(hass, entityId, exclude) {
   excludeOverride = strategy.room_exclude || [];
   window.dispatchEvent(new CustomEvent(HIDDEN_EVENT, { detail: { room_exclude: excludeOverride } }));
   return excludeOverride;
+}
+
+/** `hide_scenes` key for All Rooms' house-wide Scenes & presets row (rooms use their area id). */
+export const HOME_SCENES = "__home";
+
+/** Scene rows hidden for everyone on the dashboard (`hide_scenes`: area ids and `__home`). */
+export const hiddenScenes = (config = {}) => new Set(scenesOverride || config.hide_scenes || []);
+
+export async function setScenesHidden(hass, key, hide) {
+  const strategy = await saveStrategy(hass, "hide scenes", (s) => {
+    const list = new Set(s.hide_scenes || []);
+    if (hide) list.add(key);
+    else list.delete(key);
+    s.hide_scenes = [...list].sort();
+    if (!s.hide_scenes.length) delete s.hide_scenes;
+    return s;
+  });
+  scenesOverride = strategy.hide_scenes || [];
+  window.dispatchEvent(new CustomEvent(HIDDEN_EVENT, { detail: { hide_scenes: scenesOverride } }));
+  return scenesOverride;
 }
 
 /** Scenes and scripts that ask before running (ControlZ "confirm before run", `confirm_scenes`), for everyone on the dashboard. */

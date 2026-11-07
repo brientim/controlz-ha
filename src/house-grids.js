@@ -1,52 +1,16 @@
-import { visibleItems } from "./area-cache.js";
 import { escapeHtml } from "./base.js";
 import { CzPage, editWrap } from "./grids.js";
-import { areasOrder } from "./hidden.js";
-import { ICONS } from "./icons.js";
+import { HOUSE_PAGES, houseGroups } from "./house-pages.js";
 import {
-  KIND, coverIsOpen, friendlyName, isUnavailable, looseItems, maintenanceReport, sensorTypeGroups, sortedAreas,
+  coverIsOpen, friendlyName, isUnavailable, maintenanceReport, sensorTypeGroups,
 } from "./model.js";
 import { readPrefs, writePrefs } from "./prefs.js";
-import { WEATHER_ICON } from "./weather-grid.js";
-import { pickWeather } from "./weather-model.js";
-
-/** House-wide pages (ControlZ system rooms): which tile kinds each lists. */
-export const HOUSE_PAGES = Object.freeze({
-  coverings: { title: "Window Coverings", kinds: [KIND.COVER], icon: ICONS.blinds },
-  cameras: { title: "Cameras", kinds: [KIND.CAMERA], icon: `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z"/></svg>` },
-  sensors: { title: "Sensors", kinds: [KIND.SENSOR, KIND.MOTION], icon: ICONS.walk },
-});
 
 const SENSOR_TABS = [
   { id: "rooms", label: "By room" },
   { id: "types", label: "By type" },
   { id: "battery", label: "Batteries & offline" },
 ];
-
-/** Room groups of a house page's kinds (dashboard room order), then "No room"; hidden rooms and devices left out. */
-export function houseGroups(hass, config, kinds, hidden) {
-  const wanted = new Set(kinds);
-  const groups = sortedAreas(hass, { order: areasOrder(config) })
-    .filter((a) => !hidden.areas.has(a.area_id))
-    .map((a) => ({ id: a.area_id, name: a.name, items: visibleItems(hass, a.area_id, config).filter((i) => wanted.has(i.kind)) }))
-    .filter((g) => g.items.length);
-  const loose = looseItems(hass, kinds, hidden.entities);
-  if (loose.length) groups.push({ id: "", name: "No room", items: loose });
-  return groups;
-}
-
-/**
- * House pages with something to show, unless turned off (`coverings_view` / `cameras_view` /
- * `sensors_view` / `weather_view: false`). Weather needs a weather entity.
- */
-export function availableHousePages(hass, config) {
-  const hidden = { areas: new Set(config.hide_areas || []), entities: new Set(config.hide_entities || []) };
-  const pages = Object.entries(HOUSE_PAGES)
-    .filter(([id, p]) => config[`${id}_view`] !== false && houseGroups(hass, config, p.kinds, hidden).length > 0)
-    .map(([id, p]) => ({ id, ...p }));
-  if (config.weather_view !== false && pickWeather(hass, config.weather_entity)) pages.push({ id: "weather", title: "Weather", icon: WEATHER_ICON, kinds: [] });
-  return pages;
-}
 
 /**
  * House-wide page (ControlZ Window Coverings / Cameras / Sensors system rooms): every device of
@@ -81,6 +45,10 @@ export class HouseGrid extends CzPage {
   get _tab() {
     const tab = readPrefs().sensors_tab;
     return this._config.page === "sensors" && SENSOR_TABS.some((t) => t.id === tab) ? tab : "rooms";
+  }
+
+  bannerArea() {
+    return `page:${this._config.page}`;
   }
 
   prefsChangeStructure() {

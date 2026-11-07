@@ -9,8 +9,9 @@ import {
   FAVORITES_EVENT, favoriteLists, favoriteOrder, isFavorite, loadFavorites, setFavoritesOrder, toggleFavorite,
 } from "./favorites.js";
 import {
-  EDIT_EVENT, HIDDEN_EVENT, NO_AREA, areasOrder, entitiesOrder, hiddenLists, isEditing, movedOrder, reorderSubset, roomExcluded,
-  roomsChangedThisSession, securityBannerSettings, setAreasOrder, setEditing, setEntitiesOrder, setHidden, setRoomExcluded,
+  EDIT_EVENT, HIDDEN_EVENT, HOME_SCENES, NO_AREA, areasOrder, entitiesOrder, hiddenLists, hiddenScenes, isEditing, movedOrder,
+  reorderSubset, roomExcluded, roomsChangedThisSession, securityBannerSettings, setAreasOrder, setEditing, setEntitiesOrder, setHidden,
+  setRoomExcluded, setScenesHidden,
 } from "./hidden.js";
 import { openEntityHistory, openRoomHistory, openSecurityHistory } from "./history.js";
 import { historyItems } from "./history-model.js";
@@ -21,7 +22,8 @@ import {
   sortedAreas,
 } from "./model.js";
 import {
-  HOME_FILTERS, PREFS_EVENT, effectiveNav, effectiveScale, effectiveSize, homeFilter, roomFilter, roomSection, takeStartPage, writePrefs,
+  HOME_FILTERS, PREFS_EVENT, collapsedSections, effectiveNav, effectiveScale, effectiveSize, homeFilter, isCollapsed, roomFilter, roomSection,
+  takeStartPage, toggleCollapsed, writePrefs,
 } from "./prefs.js";
 import { resolveAreaIcon, roomIconSvg } from "./room-icons.js";
 import { SECURITY_SETTINGS_EVENT, openSecuritySettings } from "./security-settings.js";
@@ -42,11 +44,13 @@ export const hiddenOptions = (config) => ({
   ...(config.entities_order ? { entities_order: config.entities_order } : {}),
   ...(config.room_exclude ? { room_exclude: config.room_exclude } : {}),
   ...(config.confirm_scenes ? { confirm_scenes: config.confirm_scenes } : {}),
+  ...(config.hide_scenes ? { hide_scenes: config.hide_scenes } : {}),
 });
 
 /** Security banner scope and placement, forwarded to every page that can show the banner. */
 export const securityOptions = (config) => Object.fromEntries(
-  ["security_include", "security_exclude", "security_banner", "security_banner_rooms"]
+  ["security_include", "security_exclude", "security_banner", "security_banner_rooms", "favorites_view", "automations_view",
+    "coverings_view", "cameras_view", "sensors_view", "weather_view", "weather_entity"]
     .filter((key) => config[key] != null)
     .map((key) => [key, config[key]]),
 );
@@ -120,7 +124,8 @@ export class CzPage extends HTMLElement {
     this._started = false;
     this._onPrefs = () => {
       if (!this._config) return;
-      if (effectiveSize(this._config.tile_size) === this._size && !this.prefsChangeStructure()) {
+      const sameCollapsed = this._builtCollapsed === collapsedSections().join();
+      if (effectiveSize(this._config.tile_size) === this._size && sameCollapsed && !this.prefsChangeStructure()) {
         this._applyScale();
         return;
       }
@@ -274,9 +279,11 @@ export class CzPage extends HTMLElement {
     this.setAttribute("size", this._size);
     const { areas, entities } = this._hiddenSets;
     const favs = this.usesFavorites() || this._editMode ? favoritesKey() : "";
-    const key = `${this._size}|${this._editMode}|${[...areas]}|${[...entities]}|${favs}|${this._bannerShown()}|${this.structureKey()}`;
+    const scenes = `${collapsedSections()}|${[...hiddenScenes(this._config)]}`;
+    const key = `${this._size}|${this._editMode}|${[...areas]}|${[...entities]}|${favs}|${this._bannerShown()}|${scenes}|${this.structureKey()}`;
     if (key !== this._key) {
       this._key = key;
+      this._builtCollapsed = collapsedSections().join();
       this._children = [];
       this.shadowRoot.innerHTML = `<style>${GRID_STYLES}${this.styles()}</style><div class="page"></div>`;
       const page = this.shadowRoot.querySelector(".page");
@@ -291,7 +298,10 @@ export class CzPage extends HTMLElement {
     if (this._sheet?.isConnected) this._sheet.refresh();
   }
 
-  /** Area whose room page this is (null = All Rooms), or undefined for pages without a security banner. */
+  /**
+   * Where this page sits for `security_banner`: null = All Rooms, an area id for a room page,
+   * `page:<id>` for Favorites, Automations and the house pages, undefined for no banner.
+   */
   bannerArea() {
     return undefined;
   }
@@ -324,6 +334,25 @@ export class CzPage extends HTMLElement {
   /** Scripts this page shows as running (ControlZ running-automation banner), each with Cancel. */
   runningScripts() {
     return [];
+  }
+
+  /**
+   * Heading of a scene row: a chevron to collapse it on this device (count shown), and in edit mode
+   * for admins a button to hide the row for everyone (`canHide`; rooms and All Rooms). `buttons`
+   * are the row's own head buttons (+ New scene, Import, + New preset).
+   */
+  scenesHead({ title, key, count, buttons = "", canHide = false }) {
+    const editing = this._editMode;
+    const collapsed = !editing && isCollapsed(`scenes:${key}`);
+    const hidden = canHide && hiddenScenes(this._config).has(key);
+    const t = escapeHtml(title);
+    const chevron = editing ? "" : `<button type="button" class="collapse-btn" data-collapse="scenes:${escapeHtml(key)}" aria-expanded="${!collapsed}"
+      title="${collapsed ? `Show ${t}` : `Collapse ${t}`}" aria-label="${collapsed ? `Show ${t}` : `Collapse ${t}`}">${collapsed ? ICONS.chevronRight : ICONS.chevronDown}</button>`;
+    const hide = editing && canHide && this._isAdmin
+      ? `<button type="button" class="head-btn" data-hide-scenes="${escapeHtml(key)}" data-hide="${hidden ? "0" : "1"}" aria-pressed="${hidden}"
+          title="${hidden ? "Show this row again for everyone" : "Hide this row for everyone on this dashboard"}"><span class="eye-inline">${hidden ? EYE_OFF : EYE}</span> ${hidden ? "Show for everyone" : "Hide for everyone"}</button>`
+      : "";
+    return `<div class="section-head scenes-head">${chevron}<h2${editing ? "" : ` data-collapse="scenes:${escapeHtml(key)}"`}>${t}${count ? ` (${count})` : ""}</h2>${hide}${buttons}</div>`;
   }
 
   /** Where the running banner goes (pages that have one call this in `build`). */
@@ -394,11 +423,16 @@ export class CzPage extends HTMLElement {
     };
   }
 
-  /** Header row: `left` markup grows; the View menu sits on the right. */
+  /**
+   * Header row: `left` markup grows; the View menu sits on the right. Pages other than All Rooms
+   * get the security banner under it when `security_banner` includes them.
+   */
   header(page, left, pageInfo = null) {
     const menu = viewMenuHtml(this._config, this._hass, pageInfo);
-    if (!left && !menu) return;
-    page.insertAdjacentHTML("beforeend", `<div class="page-head">${left || "<span></span>"}${menu}</div>`);
+    if (left || menu) page.insertAdjacentHTML("beforeend", `<div class="page-head">${left || "<span></span>"}${menu}</div>`);
+    if (typeof this.bannerArea() === "string" && this._bannerShown()) {
+      page.insertAdjacentHTML("beforeend", `<div class="banner-row">${this.bannerHtml()}</div>`);
+    }
   }
 
   _editBanner(page) {
@@ -431,9 +465,13 @@ export class CzPage extends HTMLElement {
 
   _onPageClick(ev) {
     const target = ev.composedPath().find((el) => el instanceof HTMLElement && el.matches?.(
-      "[data-hide-kind], [data-fav-kind], [data-move-id], [data-edit-done], [data-new-automation], [data-import], [data-banner], [data-new-scene], [data-room-switch-id], [data-cancel-script], [data-new-preset]"));
+      "[data-hide-kind], [data-fav-kind], [data-move-id], [data-edit-done], [data-new-automation], [data-import], [data-banner], [data-new-scene], [data-room-switch-id], [data-cancel-script], [data-new-preset], [data-collapse], [data-hide-scenes]"));
     if (!target) return;
     ev.stopPropagation();
+    if (target.dataset.collapse) {
+      toggleCollapsed(target.dataset.collapse);
+      return;
+    }
     if (target.hasAttribute("data-new-preset")) {
       openPresetEditor(this, { areaId: target.dataset.newPreset });
       return;
@@ -466,6 +504,7 @@ export class CzPage extends HTMLElement {
     this._runEdit(target, async () => {
       if (target.dataset.favKind) await toggleFavorite(this._hass, target.dataset.favKind, target.dataset.favId);
       else if (target.dataset.roomSwitchId) await setRoomExcluded(this._hass, target.dataset.roomSwitchId, target.dataset.roomSwitch !== "1");
+      else if (target.dataset.hideScenes) await setScenesHidden(this._hass, target.dataset.hideScenes, target.dataset.hide === "1");
       else if (target.dataset.hideKind) await setHidden(this._hass, target.dataset.hideKind, target.dataset.hideId, target.dataset.hide === "1");
       else await this.moveTile(target.dataset.moveId, { delta: Number(target.dataset.move) }, target.dataset.moveGroup);
     });
@@ -510,7 +549,7 @@ export class CzPage extends HTMLElement {
    * editing; `newAutomationArea` (admins) adds "+ New" to the Automations heading and Import to
    * the Scenes heading; `canMove` adds the reorder arrows in edit mode (each section reorders on its own).
    */
-  sections(page, items, { areaName = "", newAutomationArea, canMove = false } = {}) {
+  sections(page, items, { areaName = "", newAutomationArea, canMove = false, scenes = null } = {}) {
     const editing = this._editMode;
     const hiddenEntities = this._hiddenSets.entities;
     const roomAdmin = newAutomationArea !== undefined && this._isAdmin;
@@ -518,27 +557,39 @@ export class CzPage extends HTMLElement {
       ? `<button type="button" class="head-btn" data-new-scene="${escapeHtml(newAutomationArea)}" title="Save how this room is now as a scene">+ New scene</button>
         <button type="button" class="head-btn" data-import="${escapeHtml(newAutomationArea)}">Import</button>`
       : "";
-    const groups = groupBySection(items);
-    if (roomAdmin && !editing && !groups.some((s) => s.id === "scenes")) {
+    const scenesHidden = !!scenes?.canHide && hiddenScenes(this._config).has(scenes.key);
+    const groups = groupBySection(items).filter((s) => s.id !== "scenes" || editing || !scenesHidden);
+    if (roomAdmin && !editing && !scenesHidden && !groups.some((s) => s.id === "scenes")) {
       page.insertAdjacentHTML("beforeend", `<section><div class="section-head"><h2>Scenes</h2>${sceneButtons}</div>
         <p class="hint">No scenes yet. Set the room how you like it, then + New scene.</p></section>`);
     }
     for (const section of groups) {
       const el = document.createElement("section");
-      const importButton = section.id === "scenes" ? sceneButtons : "";
-      if (section.id === "scenes" && this._config.scenes_style !== "tiles" && !editing) {
-        el.innerHTML = `<div class="section-head"><h2>${section.title}</h2>${importButton}</div>`;
-        const strip = document.createElement("controlz-scene-strip");
-        strip.setConfig({ ...hiddenOptions(this._config), tile_size: this._size, area_name: areaName, entities: section.items.map((i) => i.entity_id) });
-        this._children.push(strip);
-        el.append(strip);
-        page.append(el);
-        continue;
+      if (section.id === "scenes" && scenes) {
+        const head = this.scenesHead({ title: scenes.title || section.title, key: scenes.key, count: section.items.length, buttons: sceneButtons, canHide: scenes.canHide });
+        if (scenesHidden) el.classList.add("section-hidden");
+        if (!editing && isCollapsed(`scenes:${scenes.key}`)) {
+          el.innerHTML = head;
+          page.append(el);
+          continue;
+        }
+        if (this._config.scenes_style !== "tiles" && !editing) {
+          el.innerHTML = head;
+          const strip = document.createElement("controlz-scene-strip");
+          strip.setConfig({ ...hiddenOptions(this._config), tile_size: this._size, area_name: areaName, entities: section.items.map((i) => i.entity_id) });
+          this._children.push(strip);
+          el.append(strip);
+          page.append(el);
+          continue;
+        }
       }
+      const importButton = section.id === "scenes" ? sceneButtons : "";
       const addButton = section.id === "automations" && roomAdmin
         ? `<button type="button" class="head-btn" data-new-automation="${escapeHtml(newAutomationArea)}">+ New</button>`
         : importButton;
-      el.innerHTML = `<div class="section-head"><h2>${section.title}</h2>${addButton}</div><div class="grid"></div>`;
+      el.innerHTML = section.id === "scenes" && scenes
+        ? `${this.scenesHead({ title: scenes.title || section.title, key: scenes.key, count: section.items.length, buttons: sceneButtons, canHide: scenes.canHide })}<div class="grid"></div>`
+        : `<div class="section-head"><h2>${section.title}</h2>${addButton}</div><div class="grid"></div>`;
       const grid = el.querySelector(".grid");
       const excluded = roomExcluded(this._config);
       for (const item of section.items) {
@@ -666,7 +717,6 @@ export class RoomGrid extends CzPage {
     this.header(page, show_title
       ? `<h1 class="page-title"><span class="title-icon">${roomIconSvg(icon)}</span>${escapeHtml(name)}<span class="readings-inline"></span></h1>`
       : "", { id: `room-${area}`, name });
-    if (this._bannerShown()) page.insertAdjacentHTML("beforeend", `<div class="banner-row">${this.bannerHtml()}</div>`);
     this._statusHtml = null;
     if (this._config.show_room_status !== false && !editing) page.insertAdjacentHTML("beforeend", `<div class="room-status" role="status"></div>`);
     if (!editing) this.runningSlot(page);
@@ -684,7 +734,7 @@ export class RoomGrid extends CzPage {
       page.append(master);
     }
     if (editing || this._config.show_filter === false) {
-      this.sections(page, items, { areaName: name, newAutomationArea: area, canMove: this._isAdmin });
+      this.sections(page, items, { areaName: name, newAutomationArea: area, canMove: this._isAdmin, scenes: { key: area, canHide: true } });
       return;
     }
     page.insertAdjacentHTML("beforeend", this._filterRow(visible));
@@ -695,7 +745,9 @@ export class RoomGrid extends CzPage {
       page.insertAdjacentHTML("beforeend", `<div class="empty">${what}</div>`);
       return;
     }
-    this.sections(page, shown, { areaName: name, newAutomationArea: filtering ? undefined : area, canMove: this._isAdmin });
+    this.sections(page, shown, {
+      areaName: name, newAutomationArea: filtering ? undefined : area, canMove: this._isAdmin, scenes: { key: area, canHide: true },
+    });
   }
 
   update() {
@@ -821,12 +873,18 @@ export class HomeGrid extends CzPage {
       ? `<button type="button" class="head-btn" data-new-preset="" title="Scenes and steps in order, saved as a Home Assistant script">+ New preset</button>`
       : "";
     if (!presets.length && !add) return;
+    const scenes = { key: HOME_SCENES, title: "Scenes & presets", canHide: true };
     if (this._editMode) {
-      this.sections(page, presets, {});
+      this.sections(page, presets, { scenes });
       return;
     }
+    if (hiddenScenes(this._config).has(HOME_SCENES)) return;
     const section = document.createElement("section");
-    section.innerHTML = `<div class="section-head"><h2>Scenes &amp; presets</h2>${add}</div>`;
+    section.innerHTML = this.scenesHead({ ...scenes, count: presets.length, buttons: add });
+    if (isCollapsed(`scenes:${HOME_SCENES}`)) {
+      page.append(section);
+      return;
+    }
     if (presets.length) {
       const strip = document.createElement("controlz-scene-strip");
       strip.setConfig({ ...hiddenOptions(this._config), tile_size: this._size, entities: presets.map((i) => i.entity_id) });
@@ -970,6 +1028,10 @@ export class FavoritesGrid extends CzPage {
     return true;
   }
 
+  bannerArea() {
+    return "page:favorites";
+  }
+
   structureKey() {
     return `${Object.keys(this._hass.areas || {}).length}`;
   }
@@ -1011,7 +1073,7 @@ export class FavoritesGrid extends CzPage {
       }
       page.append(section);
     }
-    this.sections(page, items, { canMove: true });
+    this.sections(page, items, { canMove: true, scenes: { key: "__favorites" } });
   }
 }
 
@@ -1032,6 +1094,10 @@ export class AutomationsGrid extends CzPage {
 
   reorders() {
     return this._isAdmin ? "automations within each room" : "";
+  }
+
+  bannerArea() {
+    return "page:automations";
   }
 
   async moveTile(id, opts, group) {

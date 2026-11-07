@@ -1,5 +1,5 @@
 import { areaItems } from "./area-cache.js";
-import { availableHousePages } from "./house-grids.js";
+import { availableHousePages } from "./house-pages.js";
 import { automationGroups, sortedAreas } from "./model.js";
 
 const HOUSE_VIEW_ICONS = { coverings: "mdi:blinds", cameras: "mdi:cctv", sensors: "mdi:motion-sensor", weather: "mdi:weather-partly-cloudy" };
@@ -59,8 +59,11 @@ export class ControlZRoomsStrategy extends HTMLElement {
       ...(config.entities_order ? { entities_order: config.entities_order } : {}),
       ...(config.room_exclude ? { room_exclude: config.room_exclude } : {}),
       ...(config.confirm_scenes ? { confirm_scenes: config.confirm_scenes } : {}),
+      ...(config.hide_scenes ? { hide_scenes: config.hide_scenes } : {}),
       ...(config.room_icons ? { room_icons: config.room_icons } : {}),
       ...(config.icon_source ? { icon_source: config.icon_source } : {}),
+      ...Object.fromEntries(["favorites_view", "automations_view", ...PAGE_TOGGLES].filter((k) => config[k] === false).map((k) => [k, false])),
+      ...(config.weather_entity ? { weather_entity: config.weather_entity } : {}),
     };
     const security = {
       ...(config.security_include ? { security_include: config.security_include } : {}),
@@ -129,14 +132,14 @@ export class ControlZRoomsStrategy extends HTMLElement {
           path: "favorites",
           ...(config.view_icons ? { icon: "mdi:heart" } : {}),
           type: "panel",
-          cards: [{ type: "custom:controlz-favorites-grid", ...shared, ...scenes, areas_order: areaOptions.order }],
+          cards: [{ type: "custom:controlz-favorites-grid", ...shared, ...security, ...scenes, areas_order: areaOptions.order }],
         }] : []),
         ...(showAutomations ? [{
           title: "Automations",
           path: "automations",
           ...(config.view_icons ? { icon: "mdi:robot" } : {}),
           type: "panel",
-          cards: [{ type: "custom:controlz-automations-grid", ...shared, areas_order: areaOptions.order }],
+          cards: [{ type: "custom:controlz-automations-grid", ...shared, ...security, areas_order: areaOptions.order }],
         }] : []),
         ...availableHousePages(hass, config).map((p) => ({
           title: p.id === "coverings" ? "Coverings" : p.title,
@@ -144,8 +147,8 @@ export class ControlZRoomsStrategy extends HTMLElement {
           ...(config.view_icons ? { icon: HOUSE_VIEW_ICONS[p.id] } : {}),
           type: "panel",
           cards: [p.id === "weather"
-            ? { type: "custom:controlz-weather-grid", ...shared, ...(config.weather_entity ? { weather_entity: config.weather_entity } : {}) }
-            : { type: "custom:controlz-house-grid", page: p.id, ...shared, ...home, areas_order: areaOptions.order }],
+            ? { type: "custom:controlz-weather-grid", ...shared, ...security, ...(config.weather_entity ? { weather_entity: config.weather_entity } : {}) }
+            : { type: "custom:controlz-house-grid", page: p.id, ...shared, ...security, ...home, areas_order: areaOptions.order }],
         })),
         ...areas.map((a) => ({
           title: a.name,

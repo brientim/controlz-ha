@@ -73,6 +73,17 @@ export const LOCK_TAPS = [
 ];
 export const lockTap = () => (LOCK_TAPS.some((t) => t.id === readPrefs().lock_tap) ? readPrefs().lock_tap : "confirm");
 
+/** Collapsed scene rows on this device (`scenes:<area id>`, `scenes:__home`, `scenes:__favorites`). */
+export const collapsedSections = () => (Array.isArray(readPrefs().collapsed) ? readPrefs().collapsed.filter((k) => typeof k === "string") : []);
+export const isCollapsed = (key) => collapsedSections().includes(key);
+
+export function toggleCollapsed(key) {
+  const next = new Set(collapsedSections());
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  return writePrefs({ collapsed: next.size ? [...next].sort() : null });
+}
+
 /** Room page filter on this device (all / on / off / favorites) and section (null = every type); shared by every room. */
 export const ROOM_FILTER_IDS = ["all", "on", "off", "favorites"];
 export const roomFilter = () => (ROOM_FILTER_IDS.includes(readPrefs().room_filter) ? readPrefs().room_filter : "all");

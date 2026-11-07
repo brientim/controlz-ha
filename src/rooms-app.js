@@ -2,8 +2,7 @@ import { areaItems, masterItems } from "./area-cache.js";
 import { escapeHtml } from "./base.js";
 import { FAVORITES_EVENT, isFavorite, loadFavorites, toggleFavorite } from "./favorites.js";
 import { hiddenOptions, iconOptions, securityOptions, viewMenuHtml } from "./grids.js";
-import { HOUSE_PAGES, availableHousePages } from "./house-grids.js";
-import { WEATHER_ICON } from "./weather-grid.js";
+import { HOUSE_PAGES, availableHousePages } from "./house-pages.js";
 import { EDIT_EVENT, HIDDEN_EVENT, areasOrder, hiddenLists, isEditing, movedOrder, setAreasOrder, setHidden } from "./hidden.js";
 import { ICONS } from "./icons.js";
 import { automationGroups, roomSummary, securityReport, sortedAreas } from "./model.js";
@@ -15,7 +14,7 @@ import { TOKENS } from "./styles.js";
 const ALL = "__all";
 const FAV = "__favorites";
 const AUTO = "__automations";
-const PAGE_INFO = { ...HOUSE_PAGES, weather: { title: "Weather", icon: WEATHER_ICON } };
+const PAGE_INFO = { ...HOUSE_PAGES, weather: { title: "Weather", icon: ICONS.weather } };
 const HOUSE = Object.fromEntries(Object.keys(PAGE_INFO).map((id) => [id, `__${id}`]));
 const PAGES = { favorites: FAV, automations: AUTO, ...HOUSE };
 const pageOf = (selected) => Object.keys(PAGES).find((id) => PAGES[id] === selected) || null;
@@ -385,6 +384,7 @@ export class RoomsApp extends HTMLElement {
         editable: this._config.editable,
         room_nav: this._config.room_nav,
         ...hiddenOptions(this._config),
+        ...securityOptions(this._config),
         show_menu: false,
         ...iconOptions(this._config),
       };

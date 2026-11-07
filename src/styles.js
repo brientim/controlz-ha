@@ -590,6 +590,17 @@ export const GRID_STYLES = `
     white-space: nowrap; flex-shrink: 0;
   }
   .page-head .section-head { flex-wrap: wrap; row-gap: 6px; }
+  .scenes-head { gap: 6px; }
+  .scenes-head h2[data-collapse] { cursor: pointer; user-select: none; }
+  .collapse-btn {
+    width: 26px; height: 26px; flex-shrink: 0; padding: 0; border-radius: 50%; cursor: pointer;
+    border: 1px solid var(--cz-border); background: var(--cz-card-bg); color: var(--cz-text-secondary);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .collapse-btn svg { width: 14px; height: 14px; }
+  .collapse-btn:focus-visible { outline: 2px solid var(--cz-primary); outline-offset: 2px; }
+  section.section-hidden > :not(.section-head) { opacity: 0.35; filter: grayscale(0.7); }
+  section.section-hidden h2 { text-decoration: line-through; }
   .readings-inline { font-size: 0.9rem; font-weight: 600; color: var(--cz-text-secondary); white-space: nowrap; }
   .empty p { margin: 6px 0; }
   .hint { margin: 0; font-size: 0.85rem; color: var(--cz-text-secondary); }

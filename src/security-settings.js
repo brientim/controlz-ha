@@ -1,6 +1,7 @@
 import { areaItems } from "./area-cache.js";
 import { escapeHtml } from "./base.js";
 import { areasOrder, hiddenLists, securityBannerSettings, setSecurityBanner } from "./hidden.js";
+import { bannerPages } from "./house-pages.js";
 import { SECURITY_BANNER_MODES, sortedAreas } from "./model.js";
 import { sheetFrame } from "./sheet.js";
 
@@ -8,8 +9,9 @@ import { sheetFrame } from "./sheet.js";
 export const SECURITY_SETTINGS_EVENT = "controlz-security-settings";
 
 /**
- * Where the security banner shows (View → Security banner…, admins): All Rooms only, every room,
- * chosen rooms, or off. Saved in the ControlZ dashboard config, so it applies on every device.
+ * Where the security banner shows (View → Security banner…, admins): All Rooms only, every room
+ * and page, chosen rooms and pages (`page:<id>` entries), or off. Saved in the ControlZ dashboard
+ * config, so it applies on every device.
  */
 class SecuritySettingsSheet {
   constructor(host) {
@@ -40,19 +42,31 @@ class SecuritySettingsSheet {
       .filter((a) => !hidden.has(a.area_id) || this._rooms.has(a.area_id));
   }
 
+  /** Favorites, Automations and the house pages, plus any page already chosen. */
+  _pageList() {
+    const pages = bannerPages(this.hass, this._host._config || {});
+    const known = new Set(pages.map((p) => p.id));
+    const extra = [...this._rooms].filter((id) => id.startsWith("page:") && !known.has(id)).map((id) => ({ id, name: id.slice(5) }));
+    return [...pages, ...extra];
+  }
+
   sheetBody() {
+    const check = (id, name) => `
+      <label class="check-row"><input type="checkbox" data-action="sb-room" value="${escapeHtml(id)}" ${this._rooms.has(id) ? "checked" : ""} />
+        <span>${escapeHtml(name)}</span></label>`;
+    const pages = this._pageList();
     const rooms = this._mode === "rooms"
       ? `<div class="sheet-section">
-          <div class="section-label">Rooms that show it (${this._rooms.size})</div>
-          <div class="check-list">${this._roomList().map((a) => `
-            <label class="check-row"><input type="checkbox" data-action="sb-room" value="${escapeHtml(a.area_id)}" ${this._rooms.has(a.area_id) ? "checked" : ""} />
-              <span>${escapeHtml(a.name)}</span></label>`).join("")}</div>
+          <div class="section-label">Rooms and pages that show it (${this._rooms.size})</div>
+          <div class="lines-label">Rooms</div>
+          <div class="check-list">${this._roomList().map((a) => check(a.area_id, a.name)).join("")}</div>
+          ${pages.length ? `<div class="lines-label">Pages</div><div class="check-list">${pages.map((p) => check(p.id, p.name)).join("")}</div>` : ""}
         </div>`
       : "";
     const where = {
       all_rooms: "Shown on All Rooms only.",
-      every_room: "Shown on All Rooms and at the top of every room.",
-      rooms: "Shown on All Rooms and at the top of the rooms you tick.",
+      every_room: "Shown on All Rooms and at the top of every room and page (Favorites, Automations, Window Coverings, Cameras, Sensors, Weather).",
+      rooms: "Shown on All Rooms and at the top of the rooms and pages you tick.",
       off: "Not shown anywhere. The sidebar's All Rooms badge still shows the security state.",
     }[this._mode];
     const body = `
@@ -75,7 +89,7 @@ class SecuritySettingsSheet {
 
   async _save() {
     if (this._mode === "rooms" && !this._rooms.size) {
-      this._error = "Tick at least one room, or choose All Rooms only.";
+      this._error = "Tick at least one room or page, or choose All Rooms only.";
       this._rerender();
       return;
     }
