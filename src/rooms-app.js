@@ -1,12 +1,12 @@
 import { areaItems, masterItems } from "./area-cache.js";
 import { escapeHtml } from "./base.js";
 import { FAVORITES_EVENT, isFavorite, loadFavorites, toggleFavorite } from "./favorites.js";
-import { hiddenOptions, iconOptions, securityOptions, viewMenuHtml } from "./grids.js";
+import { hiddenOptions, iconOptions, saveRoomSizeForEveryone, securityOptions, viewMenuHtml } from "./grids.js";
 import { HOUSE_PAGES, availableHousePages } from "./house-pages.js";
-import { EDIT_EVENT, HIDDEN_EVENT, areasOrder, hiddenLists, isEditing, movedOrder, setAreasOrder, setHidden } from "./hidden.js";
+import { EDIT_EVENT, HIDDEN_EVENT, areasOrder, hiddenLists, isEditing, movedOrder, roomTileSizes, setAreasOrder, setHidden } from "./hidden.js";
 import { ICONS } from "./icons.js";
 import { automationGroups, roomSummary, securityReport, sortedAreas } from "./model.js";
-import { takeStartPage } from "./prefs.js";
+import { ROOM_SIZE_EVENT, takeStartPage } from "./prefs.js";
 import { DEFAULT_ROOM_ICON, resolveAreaIcon, roomIconSvg } from "./room-icons.js";
 import { SECURITY_SETTINGS_EVENT, openSecuritySettings } from "./security-settings.js";
 import { TOKENS } from "./styles.js";
@@ -172,6 +172,10 @@ export class RoomsApp extends HTMLElement {
       ev.stopPropagation();
       openSecuritySettings(this);
     });
+    this.shadowRoot.addEventListener(ROOM_SIZE_EVENT, (ev) => {
+      ev.stopPropagation();
+      saveRoomSizeForEveryone(this, ev.detail);
+    });
     this.shadowRoot.addEventListener("controlz-select-area", (ev) => {
       ev.stopPropagation();
       this._select(ev.detail.area);
@@ -310,6 +314,13 @@ export class RoomsApp extends HTMLElement {
     if (menu && menu.getAttribute("page-id") !== info.id && this._config.editable) {
       menu.setAttribute("page-id", info.id);
       menu.setAttribute("page-name", info.name);
+    }
+    if (menu) {
+      const area = info.id.startsWith("room-") ? info.id.slice("room-".length) : null;
+      const everyone = area ? roomTileSizes(this._config)[area] || "" : "";
+      if (!area) menu.removeAttribute("room-area");
+      else if (menu.getAttribute("room-area") !== area) menu.setAttribute("room-area", area);
+      if (area && menu.getAttribute("room-everyone") !== everyone) menu.setAttribute("room-everyone", everyone);
     }
     this._renderSidebar(areas);
     this._renderPage();

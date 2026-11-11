@@ -19,11 +19,10 @@ export const helpLinks = (version) => [
 ];
 
 export const WHATS_NEW = {
-  version: "0.8.1",
+  version: "0.8.2",
   items: [
-    "Scenes rows collapse: tap the chevron on a room's Scenes or All Rooms' Scenes & presets (remembered on this device).",
-    "Admins can hide a Scenes row for everyone in Edit rooms & favorites.",
-    "The security banner can show on Favorites, Automations, Window Coverings, Cameras, Sensors and Weather (View → Security banner…).",
+    "Each room can have its own tile size: on a room's page, View → This room (Same, Large, Thin or Compact), saved on this device.",
+    "Admins can set a room's tile size for everyone (View → This room for everyone, or room_tile_sizes in YAML).",
   ],
 };
 
@@ -100,7 +99,11 @@ export const HELP_SECTIONS = [
     id: "view",
     title: "View menu",
     text: "View (top right) sets the tile size (Large, Thin, Compact), the scale (50–120%), rooms as tabs or a sidebar, what a lock's button does, the accent colour and corners, and the page this device starts on. These choices are saved on this device only, so a wall tablet and a phone can differ.",
-    steps: ["Start on … makes this device open on the current page.", "Use dashboard defaults puts this device back to the dashboard's settings."],
+    steps: [
+      "On a room's page, This room gives that room its own tile size (admins can set it for everyone).",
+      "Start on … makes this device open on the current page.",
+      "Use dashboard defaults puts this device back to the dashboard's settings.",
+    ],
     image: "view-menu.png",
     anchor: "view-menu",
   },

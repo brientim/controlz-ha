@@ -27,6 +27,24 @@ test("collapsed scene rows toggle per device", async () => {
   assert.deepEqual(collapsedSections(), []);
 });
 
+test("room tile size: this device's choice, then the dashboard's for the room, then the usual size", async () => {
+  const { deviceRoomSizes, effectiveRoomSize, setDeviceRoomSize } = await import("../src/prefs.js");
+  assert.equal(effectiveRoomSize("large", "garage", {}), "large");
+  assert.equal(effectiveRoomSize("large", "garage", { garage: "compact" }), "compact");
+  writePrefs({ tile_size: "thin" });
+  assert.equal(effectiveRoomSize("large", "office", {}), "thin");
+  assert.equal(effectiveRoomSize("large", "garage", { garage: "compact" }), "compact");
+  setDeviceRoomSize("garage", "large");
+  assert.equal(effectiveRoomSize("large", "garage", { garage: "compact" }), "large");
+  assert.equal(effectiveRoomSize("large", "garage", { garage: "nonsense" }), "large");
+  setDeviceRoomSize("garage", null);
+  assert.deepEqual(deviceRoomSizes(), {});
+  assert.equal(effectiveRoomSize("large", "garage", { garage: "huge" }), "thin");
+  writePrefs({ tile_size: null, room_sizes: { a: "tiny", b: "compact" } });
+  assert.deepEqual(deviceRoomSizes(), { b: "compact" });
+  writePrefs({ room_sizes: null });
+});
+
 test("accent and corners default to ControlZ and set nothing", () => {
   const root = fakeRoot();
   applyAppearance(root);

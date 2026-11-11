@@ -14,6 +14,8 @@ import { resolveAreaIcon } from "./room-icons.js";
  *     type: custom:controlz-rooms
  *     room_nav: tabs            # tabs = All Rooms + one view (tab) per area; sidebar = ControlZ room sidebar
  *     tile_size: large          # large | thin | compact (default; each device can override from the View menu)
+ *     room_tile_sizes:          # optional per-room tile size for everyone (View → This room for everyone sets it)
+ *       garage: compact
  *     tile_scale: 1             # 0.4–1.5; 0.6 shrinks every page ~40% so more tiles fit (View menu: 100/80/60%)
  *     areas_order: [office]     # optional, pinned first (View → Edit rooms & favorites reorders)
  *     hide_areas: [garage]      # optional: rooms left out (View → Edit rooms & favorites edits this)
@@ -60,6 +62,7 @@ export class ControlZRoomsStrategy extends HTMLElement {
       ...(config.room_exclude ? { room_exclude: config.room_exclude } : {}),
       ...(config.confirm_scenes ? { confirm_scenes: config.confirm_scenes } : {}),
       ...(config.hide_scenes ? { hide_scenes: config.hide_scenes } : {}),
+      ...(config.room_tile_sizes ? { room_tile_sizes: config.room_tile_sizes } : {}),
       ...(config.room_icons ? { room_icons: config.room_icons } : {}),
       ...(config.icon_source ? { icon_source: config.icon_source } : {}),
       ...Object.fromEntries(["favorites_view", "automations_view", ...PAGE_TOGGLES].filter((k) => config[k] === false).map((k) => [k, false])),

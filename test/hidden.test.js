@@ -7,8 +7,21 @@ globalThis.window ??= new EventTarget();
 const {
   areasOrder, currentDashboardPath, entitiesOrder, hiddenLists, movedOrder, reorderSubset, roomsChangedThisSession,
   securityBannerSettings, setAreasOrder, setEntitiesOrder, setHidden, setSecurityBanner, roomExcluded, setRoomExcluded,
-  confirmScenes, runScene, setSceneConfirm, HOME_SCENES, hiddenScenes, setScenesHidden,
+  confirmScenes, runScene, setSceneConfirm, HOME_SCENES, hiddenScenes, setScenesHidden, roomTileSizes, setRoomTileSize,
 } = await import("../src/hidden.js");
+
+test("room tile sizes for everyone save to room_tile_sizes", async () => {
+  assert.deepEqual(roomTileSizes({ room_tile_sizes: { garage: "compact" } }), { garage: "compact" });
+  const hass = mockHass({ type: "custom:controlz-rooms" });
+  await setRoomTileSize(hass, "garage", "compact");
+  await setRoomTileSize(hass, "office", "thin");
+  assert.deepEqual(hass.saved.at(-1).config.strategy.room_tile_sizes, { garage: "compact", office: "thin" });
+  assert.deepEqual(roomTileSizes({}), { garage: "compact", office: "thin" });
+  await setRoomTileSize(hass, "garage", null);
+  await setRoomTileSize(hass, "office", "huge");
+  assert.equal("room_tile_sizes" in hass.saved.at(-1).config.strategy, false);
+  await assert.rejects(setRoomTileSize(mockHass({ type: "custom:controlz-rooms" }, { admin: false }), "garage", "thin"), /admins/);
+});
 
 test("scene rows hidden for everyone save to hide_scenes", async () => {
   assert.deepEqual([...hiddenScenes({ hide_scenes: ["office"] })], ["office"]);

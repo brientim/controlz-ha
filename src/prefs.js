@@ -40,6 +40,35 @@ export function effectiveSize(configSize) {
   return SIZES.includes(configSize) ? configSize : "large";
 }
 
+/** Event the View menu fires (admins) to save a room's tile size for everyone: `{ area, size }` (size null = clear). */
+export const ROOM_SIZE_EVENT = "controlz-room-size";
+
+/** This device's tile size per room (`room_sizes: { office: "compact" }`), from the room page's View menu. */
+export function deviceRoomSizes() {
+  const sizes = readPrefs().room_sizes;
+  if (!sizes || typeof sizes !== "object") return {};
+  return Object.fromEntries(Object.entries(sizes).filter(([, s]) => SIZES.includes(s)));
+}
+
+export function setDeviceRoomSize(areaId, size) {
+  const next = { ...deviceRoomSizes() };
+  if (SIZES.includes(size)) next[areaId] = size;
+  else delete next[areaId];
+  return writePrefs({ room_sizes: Object.keys(next).length ? next : null });
+}
+
+/**
+ * Tile size on a room's page (ControlZ per-room tile size): this device's choice for the room,
+ * then the dashboard's size for the room (`room_tile_sizes`), then the usual tile size.
+ */
+export function effectiveRoomSize(configSize, areaId, dashboardRoomSizes = {}) {
+  const device = deviceRoomSizes()[areaId];
+  if (SIZES.includes(device)) return device;
+  const dashboard = dashboardRoomSizes?.[areaId];
+  if (SIZES.includes(dashboard)) return dashboard;
+  return effectiveSize(configSize);
+}
+
 /**
  * Page zoom for tiles (1 = ControlZ size). Everything inside a page scales together, so tiles
  * keep their look and controls keep fitting; more tiles fit on screen at smaller scales.

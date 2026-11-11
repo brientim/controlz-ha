@@ -1,6 +1,6 @@
 import {
-  LOCK_TAPS, NAVS, PREFS_EVENT, SCALE_MAX, SCALE_MIN, SCALE_STEP, SIZES,
-  effectiveNav, effectiveScale, effectiveSize, lockTap, readPrefs, startPage, writePrefs,
+  LOCK_TAPS, NAVS, PREFS_EVENT, ROOM_SIZE_EVENT, SCALE_MAX, SCALE_MIN, SCALE_STEP, SIZES,
+  deviceRoomSizes, effectiveNav, effectiveScale, effectiveSize, lockTap, readPrefs, setDeviceRoomSize, startPage, writePrefs,
 } from "./prefs.js";
 
 const escapeAttr = (value) =>
@@ -110,7 +110,23 @@ export class ViewMenu extends HTMLElement {
   }
 
   static get observedAttributes() {
-    return ["page-id", "page-name"];
+    return ["page-id", "page-name", "room-area", "room-everyone"];
+  }
+
+  /** On a room page: this room's tile size on this device and (admins) for everyone; "Same" follows the tile size above. */
+  _roomSizeHtml(size, admin) {
+    const area = this.getAttribute("room-area");
+    if (!area) return "";
+    const everyone = SIZES.includes(this.getAttribute("room-everyone")) ? this.getAttribute("room-everyone") : "";
+    const mine = deviceRoomSizes()[area] || "";
+    const seg = (attr, current, label) => `<div class="seg" role="group" aria-label="${label}">${["", ...SIZES].map((v) =>
+      `<button type="button" data-${attr}="${v || "same"}" aria-pressed="${v === current}">${v ? LABELS[v] : "Same"}</button>`).join("")}</div>`;
+    const used = mine || everyone || size;
+    const why = mine ? "chosen on this device" : everyone ? "set for everyone" : "same as other rooms";
+    return `<div class="label">This room</div>
+      ${seg("room-size", mine, "Tile size in this room on this device")}
+      ${admin ? `<div class="label">This room for everyone</div>${seg("room-everyone", everyone, "Tile size in this room for everyone")}` : ""}
+      <p class="note">Tiles in ${escapeAttr(this.getAttribute("page-name") || "this room")} are <strong>${LABELS[used]}</strong> (${why}).</p>`;
   }
 
   attributeChangedCallback() {
@@ -139,7 +155,7 @@ export class ViewMenu extends HTMLElement {
     const nav = effectiveNav(this.getAttribute("default-nav"));
     const scale = Math.round(effectiveScale(this.getAttribute("default-scale")) * 100);
     const prefs = readPrefs();
-    const custom = ["tile_size", "room_nav", "tile_scale", "lock_tap", "accent", "corners"].some((k) => prefs[k] != null);
+    const custom = ["tile_size", "room_nav", "tile_scale", "lock_tap", "accent", "corners", "room_sizes"].some((k) => prefs[k] != null);
     const pageId = this.getAttribute("page-id");
     const start = startPage();
     const startName = start ? prefs.start_name || start : "All Rooms";
@@ -158,6 +174,7 @@ export class ViewMenu extends HTMLElement {
       ${this._open ? `<div class="menu" role="menu">
         <div class="label">Tile size</div>
         ${this._segment("size", SIZES, size)}
+        ${this._roomSizeHtml(size, admin)}
         <div class="label">Scale</div>
         <div class="scale-row">
           <input type="range" min="${SCALE_MIN}" max="${SCALE_MAX}" step="${SCALE_STEP}" value="${scale}"
@@ -219,7 +236,16 @@ export class ViewMenu extends HTMLElement {
     if (target.dataset.lockTap) writePrefs({ lock_tap: target.dataset.lockTap === "confirm" ? null : target.dataset.lockTap });
     if (target.dataset.accent) writePrefs({ accent: target.dataset.accent === "controlz" ? null : target.dataset.accent });
     if (target.dataset.corners) writePrefs({ corners: target.dataset.corners === "round" ? null : target.dataset.corners });
-    if (target.hasAttribute("data-reset")) writePrefs({ tile_size: null, room_nav: null, tile_scale: null, lock_tap: null, accent: null, corners: null });
+    if (target.hasAttribute("data-reset")) {
+      writePrefs({ tile_size: null, room_nav: null, tile_scale: null, lock_tap: null, accent: null, corners: null, room_sizes: null });
+    }
+    const area = this.getAttribute("room-area");
+    if (area && target.dataset.roomSize) setDeviceRoomSize(area, target.dataset.roomSize === "same" ? null : target.dataset.roomSize);
+    if (area && target.dataset.roomEveryone) {
+      const size = target.dataset.roomEveryone === "same" ? null : target.dataset.roomEveryone;
+      this.setAttribute("room-everyone", size || "");
+      this.dispatchEvent(new CustomEvent(ROOM_SIZE_EVENT, { bubbles: true, composed: true, detail: { area, size } }));
+    }
     if (target.hasAttribute("data-start")) {
       const id = this.getAttribute("page-id");
       writePrefs(id === "rooms" ? { start_page: null, start_name: null } : { start_page: id, start_name: this.getAttribute("page-name") });

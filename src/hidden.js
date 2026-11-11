@@ -19,6 +19,7 @@ let bannerOverride = null;
 let excludeOverride = null;
 let confirmOverride = null;
 let scenesOverride = null;
+let roomSizesOverride = null;
 let editing = false;
 
 /** Key for automations without a room in `entities_order`. */
@@ -173,6 +174,24 @@ export async function setRoomExcluded(hass, entityId, exclude) {
   excludeOverride = strategy.room_exclude || [];
   window.dispatchEvent(new CustomEvent(HIDDEN_EVENT, { detail: { room_exclude: excludeOverride } }));
   return excludeOverride;
+}
+
+/** Tile size per room for everyone on the dashboard (`room_tile_sizes: { office: compact }`). */
+export const roomTileSizes = (config = {}) => ({ ...(roomSizesOverride || config.room_tile_sizes || {}) });
+
+/** Save (or clear, with `size` null) a room's tile size for everyone. */
+export async function setRoomTileSize(hass, areaId, size) {
+  const strategy = await saveStrategy(hass, "set a room's tile size", (s) => {
+    const all = { ...(s.room_tile_sizes || {}) };
+    if (["large", "thin", "compact"].includes(size)) all[areaId] = size;
+    else delete all[areaId];
+    s.room_tile_sizes = all;
+    if (!Object.keys(all).length) delete s.room_tile_sizes;
+    return s;
+  });
+  roomSizesOverride = strategy.room_tile_sizes || {};
+  window.dispatchEvent(new CustomEvent(HIDDEN_EVENT, { detail: { room_tile_sizes: roomSizesOverride } }));
+  return roomSizesOverride;
 }
 
 /** `hide_scenes` key for All Rooms' house-wide Scenes & presets row (rooms use their area id). */

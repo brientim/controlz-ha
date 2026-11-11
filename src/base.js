@@ -66,8 +66,9 @@ export class CzElement extends HTMLElement {
     this.closeSheet();
   }
 
+  /** `forced_size` (a room page's own tile size) wins over this device's tile size. */
   _applySize() {
-    this.setAttribute("size", effectiveSize(this._config.tile_size));
+    this.setAttribute("size", SIZES.includes(this._config.forced_size) ? this._config.forced_size : effectiveSize(this._config.tile_size));
     const scale = Number(this._config.tile_scale);
     this.style.zoom = scale >= 0.4 && scale <= 1.5 && scale !== 1 ? String(scale) : "";
   }

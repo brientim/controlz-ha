@@ -10,8 +10,8 @@ import {
 } from "./favorites.js";
 import {
   EDIT_EVENT, HIDDEN_EVENT, HOME_SCENES, NO_AREA, areasOrder, entitiesOrder, hiddenLists, hiddenScenes, isEditing, movedOrder,
-  reorderSubset, roomExcluded, roomsChangedThisSession, securityBannerSettings, setAreasOrder, setEditing, setEntitiesOrder, setHidden,
-  setRoomExcluded, setScenesHidden,
+  reorderSubset, roomExcluded, roomTileSizes, roomsChangedThisSession, securityBannerSettings, setAreasOrder, setEditing, setEntitiesOrder,
+  setHidden, setRoomExcluded, setRoomTileSize, setScenesHidden,
 } from "./hidden.js";
 import { openEntityHistory, openRoomHistory, openSecurityHistory } from "./history.js";
 import { historyItems } from "./history-model.js";
@@ -22,7 +22,8 @@ import {
   sortedAreas,
 } from "./model.js";
 import {
-  HOME_FILTERS, PREFS_EVENT, collapsedSections, effectiveNav, effectiveScale, effectiveSize, homeFilter, isCollapsed, roomFilter, roomSection,
+  HOME_FILTERS, PREFS_EVENT, ROOM_SIZE_EVENT, collapsedSections, effectiveNav, effectiveRoomSize, effectiveScale, effectiveSize, homeFilter, isCollapsed,
+  roomFilter, roomSection,
   takeStartPage, toggleCollapsed, writePrefs,
 } from "./prefs.js";
 import { resolveAreaIcon, roomIconSvg } from "./room-icons.js";
@@ -45,6 +46,7 @@ export const hiddenOptions = (config) => ({
   ...(config.room_exclude ? { room_exclude: config.room_exclude } : {}),
   ...(config.confirm_scenes ? { confirm_scenes: config.confirm_scenes } : {}),
   ...(config.hide_scenes ? { hide_scenes: config.hide_scenes } : {}),
+  ...(config.room_tile_sizes ? { room_tile_sizes: config.room_tile_sizes } : {}),
 });
 
 /** Security banner scope and placement, forwarded to every page that can show the banner. */
@@ -55,14 +57,27 @@ export const securityOptions = (config) => Object.fromEntries(
     .map((key) => [key, config[key]]),
 );
 
-/** View menu; `page` (`{ id, name }`) lets it offer "Start on this page". */
+/** View menu attributes for a room page's own tile size (`room-area`, and `room-everyone` = the dashboard's size for it). */
+export const roomSizeAttrs = (config, page) => {
+  if (!page?.id?.startsWith("room-")) return "";
+  const area = page.id.slice("room-".length);
+  return `room-area="${escapeHtml(area)}" room-everyone="${escapeHtml(roomTileSizes(config)[area] || "")}"`;
+};
+
+/** View menu; `page` (`{ id, name }`) lets it offer "Start on this page" and, on a room, the room's tile size. */
 export const viewMenuHtml = (config, hass, page = null) =>
   config.show_menu === false
     ? ""
     : `<controlz-view-menu default-size="${escapeHtml(config.tile_size || "large")}"
         default-nav="${escapeHtml(config.room_nav || "tabs")}" default-scale="${escapeHtml(String(config.tile_scale ?? 1))}"
         ${config.show_nav_menu ? "show-nav" : ""} ${config.editable ? "editable" : ""} ${hass?.user?.is_admin ? "admin" : ""}
-        ${page && config.editable ? `page-id="${escapeHtml(page.id)}" page-name="${escapeHtml(page.name)}"` : ""}></controlz-view-menu>`;
+        ${page && config.editable ? `page-id="${escapeHtml(page.id)}" page-name="${escapeHtml(page.name)}"` : ""}
+        ${roomSizeAttrs(config, page)}></controlz-view-menu>`;
+
+/** Save a room's tile size for everyone (View menu, admins); `host` is the page or the sidebar app. */
+export function saveRoomSizeForEveryone(host, { area, size }) {
+  setRoomTileSize(host.hass, area, size).catch((err) => window.alert(err?.message || "Could not save the dashboard."));
+}
 
 const EYE = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 110-10 5 5 0 010 10zm0-8a3 3 0 100 6 3 3 0 000-6z"/></svg>`;
 const EYE_OFF = `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 7a5 5 0 015 5c0 .65-.13 1.26-.36 1.83l2.92 2.92A11.82 11.82 0 0023 12c-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16A4.85 4.85 0 0112 7zM2 4.27l2.28 2.28.46.46A11.8 11.8 0 001 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55A2.82 2.82 0 009 12a3 3 0 003 3c.22 0 .44-.03.65-.08l1.55 1.55A4.97 4.97 0 017 12c0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16a3 3 0 00-3-3l-.17.01z"/></svg>`;
@@ -125,7 +140,7 @@ export class CzPage extends HTMLElement {
     this._onPrefs = () => {
       if (!this._config) return;
       const sameCollapsed = this._builtCollapsed === collapsedSections().join();
-      if (effectiveSize(this._config.tile_size) === this._size && sameCollapsed && !this.prefsChangeStructure()) {
+      if (this.pageSize() === this._size && sameCollapsed && !this.prefsChangeStructure()) {
         this._applyScale();
         return;
       }
@@ -144,6 +159,10 @@ export class CzPage extends HTMLElement {
     this.shadowRoot.addEventListener(SECURITY_SETTINGS_EVENT, (ev) => {
       ev.stopPropagation();
       openSecuritySettings(this);
+    });
+    this.shadowRoot.addEventListener(ROOM_SIZE_EVENT, (ev) => {
+      ev.stopPropagation();
+      saveRoomSizeForEveryone(this, ev.detail);
     });
     this._listenForDrags();
   }
@@ -275,7 +294,7 @@ export class CzPage extends HTMLElement {
       this._started = true;
       this.firstSync();
     }
-    this._size = effectiveSize(this._config.tile_size);
+    this._size = this.pageSize();
     this.setAttribute("size", this._size);
     const { areas, entities } = this._hiddenSets;
     const favs = this.usesFavorites() || this._editMode ? favoritesKey() : "";
@@ -530,8 +549,23 @@ export class CzPage extends HTMLElement {
       .map((w) => w.dataset.wrapId);
   }
 
+  /** Tile size for this page on this device (room pages can have their own). */
+  pageSize() {
+    return effectiveSize(this._config.tile_size);
+  }
+
+  /** Size config for child tiles; a page with its own size pins it so this device's tile size does not win. */
+  sizeConfig() {
+    return { tile_size: this._size, ...(this.ownSize ? { forced_size: this._size } : {}) };
+  }
+
+  /** True for pages whose tile size can differ from the dashboard's (room pages). */
+  get ownSize() {
+    return false;
+  }
+
   tile(kind, config) {
-    const el = createTile(kind, { tile_size: this._size, ...hiddenOptions(this._config), ...config });
+    const el = createTile(kind, { ...this.sizeConfig(), ...hiddenOptions(this._config), ...config });
     this._children.push(el);
     return el;
   }
@@ -576,7 +610,7 @@ export class CzPage extends HTMLElement {
         if (this._config.scenes_style !== "tiles" && !editing) {
           el.innerHTML = head;
           const strip = document.createElement("controlz-scene-strip");
-          strip.setConfig({ ...hiddenOptions(this._config), tile_size: this._size, area_name: areaName, entities: section.items.map((i) => i.entity_id) });
+          strip.setConfig({ ...hiddenOptions(this._config), ...this.sizeConfig(), area_name: areaName, entities: section.items.map((i) => i.entity_id) });
           this._children.push(strip);
           el.append(strip);
           page.append(el);
@@ -778,6 +812,15 @@ export class RoomGrid extends CzPage {
     return this._config.area;
   }
 
+  /** This room's own tile size: this device's choice for it, then the dashboard's (`room_tile_sizes`), then the usual size. */
+  pageSize() {
+    return effectiveRoomSize(this._config.tile_size, this._config.area, roomTileSizes(this._config));
+  }
+
+  get ownSize() {
+    return true;
+  }
+
   runningScripts() {
     return visibleItems(this._hass, this._config.area, this._config).map((i) => i.entity_id).filter((id) => id.startsWith("script."));
   }
@@ -887,7 +930,7 @@ export class HomeGrid extends CzPage {
     }
     if (presets.length) {
       const strip = document.createElement("controlz-scene-strip");
-      strip.setConfig({ ...hiddenOptions(this._config), tile_size: this._size, entities: presets.map((i) => i.entity_id) });
+      strip.setConfig({ ...hiddenOptions(this._config), ...this.sizeConfig(), entities: presets.map((i) => i.entity_id) });
       this._children.push(strip);
       section.append(strip);
     } else section.insertAdjacentHTML("beforeend", `<p class="hint">House-wide scenes and presets (Home, Away, Bedtime…) go here.</p>`);
