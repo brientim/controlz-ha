@@ -36,6 +36,7 @@ import {
   showsSecurityBanner,
   stepTarget,
   roomStatus,
+  attentionReport,
   filterRoomItems,
   itemIsOn,
   lockView,
@@ -253,10 +254,10 @@ test("on now and all lights off leave outlets alone", () => {
 test("maintenance report: low batteries (diagnostic included) and offline devices", () => {
   const report = maintenanceReport(hass);
   assert.deepEqual(report.lowBattery.map((i) => [i.name, i.level, i.area]), [["Garage Side Lock", 12, "Garage"]]);
-  assert.deepEqual(report.unavailable.map((i) => i.entity_id), ["light.mums_bedside_lamp"]);
-  assert.equal(report.count, 2);
+  assert.deepEqual(report.unavailable.map((i) => i.entity_id), ["light.mums_bedside_lamp", "binary_sensor.patio_motion", "sensor.patio_temperature"]);
+  assert.equal(report.count, 4);
   assert.equal(maintenanceReport(hass, { threshold: 90 }).lowBattery.length, 3);
-  assert.equal(maintenanceReport(hass, { exclude: ["light.mums_bedside_lamp"] }).unavailable.length, 0);
+  assert.equal(maintenanceReport(hass, { exclude: ["light.mums_bedside_lamp"] }).unavailable.length, 2);
   const low = structuredClone(hass);
   low.states["binary_sensor.front_door_battery_low"] = { state: "on", attributes: { friendly_name: "Front Door Battery", device_class: "battery" } };
   low.entities["binary_sensor.front_door_battery_low"] = { area_id: "entrance", device_id: null };
@@ -319,9 +320,29 @@ test("security banner placement: All Rooms only, every room, chosen rooms or off
 test("banner pages: Favorites, Automations and house pages that exist", async () => {
   const { bannerPages } = await import("../src/house-pages.js");
   assert.deepEqual(bannerPages(hass, {}).map((p) => p.id),
-    ["page:favorites", "page:automations", "page:coverings", "page:cameras", "page:sensors", "page:weather"]);
-  assert.deepEqual(bannerPages(hass, { favorites_view: false, weather_view: false, cameras_view: false }).map((p) => p.id),
+    ["page:favorites", "page:automations", "page:attention", "page:coverings", "page:cameras", "page:sensors", "page:weather"]);
+  assert.deepEqual(bannerPages(hass, { favorites_view: false, weather_view: false, cameras_view: false, attention_view: false }).map((p) => p.id),
     ["page:automations", "page:coverings", "page:sensors"]);
+});
+
+test("needs attention: grouped by fault, one row per device, ignore and threshold", () => {
+  const report = attentionReport(hass, { threshold: 20, now: Date.now() });
+  assert.deepEqual(report.groups.map((g) => [g.id, g.items.map((r) => r.name)]), [
+    ["offline", ["Patio Sensor", "Mum's Bedside Lamp"]],
+    ["battery", ["Garage Side Lock"]],
+    ["orphaned", ["Old Porch Light"]],
+    ["unassigned", ["Unassigned Lamp"]],
+  ]);
+  const patio = report.groups[0].items[0];
+  assert.deepEqual([patio.key, patio.entities.length, patio.area], ["device:dev_patio_sensor", 2, "Entrance"]);
+  assert.match(patio.detail, /^Unavailable for 3h · 2 entities$/);
+  assert.equal(report.groups[1].items[0].detail, "12%");
+  assert.equal(report.count, 5);
+  const ignored = attentionReport(hass, { ignore: ["device:dev_patio_sensor", "entity:light.unassigned"] });
+  assert.deepEqual(ignored.ignored.map((r) => r.name), ["Patio Sensor", "Unassigned Lamp"]);
+  assert.equal(ignored.count, 3);
+  assert.equal(attentionReport(hass, { threshold: 90 }).groups.find((g) => g.id === "battery").items.length, 3);
+  assert.equal(attentionReport(hass, { exclude: ["switch.old_porch_light"] }).groups.some((g) => g.id === "orphaned"), false);
 });
 
 test("security banner severity mirrors ControlZ", () => {

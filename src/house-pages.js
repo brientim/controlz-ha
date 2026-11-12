@@ -24,16 +24,18 @@ export function houseGroups(hass, config, kinds, hidden) {
 }
 
 /**
- * House pages with something to show, unless turned off (`coverings_view` / `cameras_view` /
- * `sensors_view` / `weather_view: false`). Weather needs a weather entity.
+ * House pages with something to show, unless turned off (`attention_view` / `coverings_view` /
+ * `cameras_view` / `sensors_view` / `weather_view: false`). Needs Attention is always there
+ * (it says when nothing needs attention); Weather needs a weather entity.
  */
 export function availableHousePages(hass, config) {
   const hidden = { areas: new Set(config.hide_areas || []), entities: new Set(config.hide_entities || []) };
+  const attention = config.attention_view !== false ? [{ id: "attention", title: "Needs Attention", icon: ICONS.alert, kinds: [] }] : [];
   const pages = Object.entries(HOUSE_PAGES)
     .filter(([id, p]) => config[`${id}_view`] !== false && houseGroups(hass, config, p.kinds, hidden).length > 0)
     .map(([id, p]) => ({ id, ...p }));
   if (config.weather_view !== false && pickWeather(hass, config.weather_entity)) pages.push({ id: "weather", title: "Weather", icon: ICONS.weather, kinds: [] });
-  return pages;
+  return [...attention, ...pages];
 }
 
 /**

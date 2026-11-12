@@ -4,7 +4,8 @@ import { HOUSE_PAGES, houseGroups } from "./house-pages.js";
 import {
   coverIsOpen, friendlyName, isUnavailable, maintenanceReport, sensorTypeGroups,
 } from "./model.js";
-import { readPrefs, writePrefs } from "./prefs.js";
+import { dashboardBatteryThreshold } from "./hidden.js";
+import { effectiveBatteryThreshold, readPrefs, writePrefs } from "./prefs.js";
 
 const SENSOR_TABS = [
   { id: "rooms", label: "By room" },
@@ -151,7 +152,9 @@ export class HouseGrid extends CzPage {
   }
 
   _batteryList() {
-    const m = maintenanceReport(this._hass, { threshold: Number(this._config.battery_threshold) || 20, exclude: this._config.hide_entities });
+    const m = maintenanceReport(this._hass, {
+      threshold: effectiveBatteryThreshold(dashboardBatteryThreshold(this._config)), exclude: this._config.hide_entities,
+    });
     const levels = [];
     for (const [entityId, entry] of Object.entries(this._hass.entities || {})) {
       const s = this._hass.states[entityId];

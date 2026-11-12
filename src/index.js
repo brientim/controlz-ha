@@ -1,5 +1,7 @@
 import { watchAppearance } from "./appearance.js";
 import { AutomationsGrid, FavoritesGrid, HomeGrid, RoomGrid } from "./grids.js";
+import { AttentionGrid } from "./attention-grid.js";
+import { DashtopGrid } from "./dashtop.js";
 import { HouseGrid } from "./house-grids.js";
 import { WeatherGrid } from "./weather-grid.js";
 import { classifyEntity, KIND } from "./model.js";
@@ -81,6 +83,8 @@ const ELEMENTS = {
   "controlz-favorites-grid": FavoritesGrid,
   "controlz-automations-grid": AutomationsGrid,
   "controlz-house-grid": HouseGrid,
+  "controlz-attention-grid": AttentionGrid,
+  "controlz-dashtop": DashtopGrid,
   "controlz-weather-grid": WeatherGrid,
   "controlz-room-icons-card": RoomIconsCard,
   "controlz-scene-strip": SceneStrip,
@@ -104,6 +108,8 @@ window.customCards.push(
   { type: "controlz-home-grid", name: "ControlZ All Rooms", description: "Security banner, All / On / Off filter, maintenance report and a room tile for every area." },
   { type: "controlz-favorites-grid", name: "ControlZ Favorites", description: "Your favorite rooms, scenes and devices (saved per Home Assistant user)." },
   { type: "controlz-automations-grid", name: "ControlZ Automations", description: "Every automation by room: run, enable, edit, duplicate and delete." },
+  { type: "controlz-dashtop", name: "ControlZ Dashtop", description: "The home at a glance: greeting, status chips, clock and weather, today's calendar, a to-do list, the week and your own tiles." },
+  { type: "controlz-attention-grid", name: "ControlZ Needs Attention", description: "Devices not responding, batteries low, orphaned entities and devices in no room, grouped by fault." },
   { type: "controlz-weather-grid", name: "ControlZ Weather", description: "Current weather, the next 24 hours, the next 7 days and the sun (weather_entity: optional)." },
   { type: "controlz-house-grid", name: "ControlZ House page", description: "Every window covering, camera or sensor in the house, by room (page: coverings | cameras | sensors)." },
   { type: "controlz-rooms-app", name: "ControlZ Rooms (sidebar)", description: "Room sidebar with badges plus the selected room — use in a panel view." },

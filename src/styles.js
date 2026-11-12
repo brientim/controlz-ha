@@ -427,6 +427,10 @@ export const SHEET_STYLES = `
   .sec-row .level { margin-left: auto; font-weight: 700; font-size: 0.85rem; }
   .sec-row .level.low { color: #b91c1c; }
 
+  .dc-tiles { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .dc-tiles li { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 10px; background: var(--cz-bg-secondary); font-size: 0.88rem; }
+  .dc-tiles li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dc-tiles .btn { flex: 0 0 auto; min-width: 32px; min-height: 30px; padding: 0 8px; }
   .phrase { display: inline-flex; align-items: stretch; flex: 0 1 auto; max-width: 100%; }
   .phrase .btn { border-radius: 8px 0 0 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .phrase-x {
@@ -471,7 +475,7 @@ export const GRID_STYLES = `
   /* Tile scale: everything below the header zooms together (same look, controls still fit).
      --cz-inner is the measured content width in px, widened by 1 / scale so the zoomed
      content still spans the page (percentages are not used: browsers resolve them differently under zoom). */
-  .page.scaled > :not(.page-head):not(.sheet-host):not(.edit-banner):not(.banner-row) {
+  .page.scaled > :not(.page-head):not(.sheet-host):not(.edit-banner):not(.banner-row):not(.dt-sky) {
     zoom: var(--cz-scale);
     width: calc(var(--cz-inner) / var(--cz-scale));
   }

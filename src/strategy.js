@@ -2,8 +2,10 @@ import { areaItems } from "./area-cache.js";
 import { availableHousePages } from "./house-pages.js";
 import { automationGroups, sortedAreas } from "./model.js";
 
-const HOUSE_VIEW_ICONS = { coverings: "mdi:blinds", cameras: "mdi:cctv", sensors: "mdi:motion-sensor", weather: "mdi:weather-partly-cloudy" };
-const PAGE_TOGGLES = ["coverings_view", "cameras_view", "sensors_view", "weather_view"];
+const HOUSE_VIEW_ICONS = {
+  attention: "mdi:alert-outline", coverings: "mdi:blinds", cameras: "mdi:cctv", sensors: "mdi:motion-sensor", weather: "mdi:weather-partly-cloudy",
+};
+const PAGE_TOGGLES = ["dashtop_view", "attention_view", "coverings_view", "cameras_view", "sensors_view", "weather_view"];
 import { effectiveNav } from "./prefs.js";
 import { resolveAreaIcon } from "./room-icons.js";
 
@@ -28,6 +30,9 @@ import { resolveAreaIcon } from "./room-icons.js";
  *     security_banner_rooms: []   # with `rooms`: room pages that also show the banner
  *     favorites_view: true      # false = no Favorites view (favorites are per Home Assistant user)
  *     automations_view: true    # false = no Automations view (room pages still list their automations)
+ *     dashtop_view: true        # false = no Dashtop (greeting, status chips, clock & weather, calendar, to-do, week, own tiles)
+ *     attention_view: true      # false = no Needs Attention page (not responding, battery low, orphaned, not in a room)
+ *     attention_ignore: []      # devices Needs Attention leaves out (its Ignore button writes this)
  *     coverings_view: true      # false = no house-wide Window Coverings page (Open all / Close all)
  *     cameras_view: true        # false = no Cameras page
  *     sensors_view: true        # false = no Sensors page (by room, by type, batteries & offline)
@@ -63,6 +68,7 @@ export class ControlZRoomsStrategy extends HTMLElement {
       ...(config.confirm_scenes ? { confirm_scenes: config.confirm_scenes } : {}),
       ...(config.hide_scenes ? { hide_scenes: config.hide_scenes } : {}),
       ...(config.room_tile_sizes ? { room_tile_sizes: config.room_tile_sizes } : {}),
+      ...(config.attention_ignore ? { attention_ignore: config.attention_ignore } : {}),
       ...(config.room_icons ? { room_icons: config.room_icons } : {}),
       ...(config.icon_source ? { icon_source: config.icon_source } : {}),
       ...Object.fromEntries(["favorites_view", "automations_view", ...PAGE_TOGGLES].filter((k) => config[k] === false).map((k) => [k, false])),
@@ -130,6 +136,13 @@ export class ControlZRoomsStrategy extends HTMLElement {
             hide_areas: areaOptions.hide,
           }],
         },
+        ...(config.dashtop_view !== false ? [{
+          title: "Dashtop",
+          path: "dashtop",
+          ...(config.view_icons ? { icon: "mdi:monitor-dashboard" } : {}),
+          type: "panel",
+          cards: [{ type: "custom:controlz-dashtop", ...shared, ...security, ...home, areas_order: areaOptions.order }],
+        }] : []),
         ...(showFavorites ? [{
           title: "Favorites",
           path: "favorites",
@@ -151,7 +164,9 @@ export class ControlZRoomsStrategy extends HTMLElement {
           type: "panel",
           cards: [p.id === "weather"
             ? { type: "custom:controlz-weather-grid", ...shared, ...security, ...(config.weather_entity ? { weather_entity: config.weather_entity } : {}) }
-            : { type: "custom:controlz-house-grid", page: p.id, ...shared, ...security, ...home, areas_order: areaOptions.order }],
+            : p.id === "attention"
+              ? { type: "custom:controlz-attention-grid", ...shared, ...security, ...home }
+              : { type: "custom:controlz-house-grid", page: p.id, ...shared, ...security, ...home, areas_order: areaOptions.order }],
         })),
         ...areas.map((a) => ({
           title: a.name,

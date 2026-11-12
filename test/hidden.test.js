@@ -8,7 +8,26 @@ const {
   areasOrder, currentDashboardPath, entitiesOrder, hiddenLists, movedOrder, reorderSubset, roomsChangedThisSession,
   securityBannerSettings, setAreasOrder, setEntitiesOrder, setHidden, setSecurityBanner, roomExcluded, setRoomExcluded,
   confirmScenes, runScene, setSceneConfirm, HOME_SCENES, hiddenScenes, setScenesHidden, roomTileSizes, setRoomTileSize,
+  attentionIgnored, dashboardBatteryThreshold, setAttentionIgnored, setBatteryThreshold,
 } = await import("../src/hidden.js");
+
+test("needs attention: ignored devices and the low-battery level save for everyone", async () => {
+  const hass = mockHass({ type: "custom:controlz-rooms", battery_threshold: 25 });
+  assert.equal(dashboardBatteryThreshold({ battery_threshold: 25 }), 25);
+  await setAttentionIgnored(hass, "device:dev_a", true);
+  await setAttentionIgnored(hass, "entity:light.b", true);
+  assert.deepEqual(hass.saved.at(-1).config.strategy.attention_ignore, ["device:dev_a", "entity:light.b"]);
+  assert.deepEqual([...attentionIgnored({})], ["device:dev_a", "entity:light.b"]);
+  await setAttentionIgnored(hass, "device:dev_a", false);
+  await setAttentionIgnored(hass, "entity:light.b", false);
+  assert.equal("attention_ignore" in hass.saved.at(-1).config.strategy, false);
+  await setBatteryThreshold(hass, 35);
+  assert.equal(hass.saved.at(-1).config.strategy.battery_threshold, 35);
+  assert.equal(dashboardBatteryThreshold({ battery_threshold: 25 }), 35);
+  await setBatteryThreshold(hass, null);
+  assert.equal("battery_threshold" in hass.saved.at(-1).config.strategy, false);
+  assert.equal(dashboardBatteryThreshold({ battery_threshold: 25 }), null);
+});
 
 test("room tile sizes for everyone save to room_tile_sizes", async () => {
   assert.deepEqual(roomTileSizes({ room_tile_sizes: { garage: "compact" } }), { garage: "compact" });

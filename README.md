@@ -111,6 +111,34 @@ History comes from Home Assistant's recorder (ControlZ Sensor History and Securi
 
 ![New scene](https://raw.githubusercontent.com/brientim/controlz-ha/main/dev/screenshots/scene-capture.png)
 
+### Dashtop
+
+The home at a glance (a ControlZ desktop for a wall tablet or a computer), next to All Rooms:
+
+- **Greeting and status chips**: "Good evening, Sam", then only what needs saying — the security state (tap for the list), **⚠ Needs Attention** (tap to open it), lights on (tap for All Rooms → On), presets running (tap to cancel), and the temperature outside.
+- **Clock and weather**: a big clock, today's weather with the high and low, and the next sunrise or sunset.
+- **Today**: today's events from your Home Assistant calendars (Local Calendar, Google, CalDAV…), all-day first, with the one happening now and **Next … in 25 min**.
+- **To do**: a Home Assistant to-do list (Local To-do, Shopping list…): tick items off and add new ones.
+- **This week**: the next seven days, each with its events, coloured by calendar.
+- **My tiles**: your own choice of rooms and devices, in your order (your favorites until you choose).
+
+The background is a sky that follows the sun (dawn, day, dusk, night) and the weather (clouds, rain, snow, stars); it stays still when the device asks for reduced motion. **✎ Customize** chooses the sections, calendars, to-do lists and tiles. It is saved for your Home Assistant user, so everyone in the house has their own Dashtop on every device. Make it the first page with **View → Start on Dashtop**, or turn it off with `dashtop_view: false`.
+
+![Dashtop](https://raw.githubusercontent.com/brientim/controlz-ha/main/dev/screenshots/dashtop.png)
+
+### Needs Attention
+
+One page for everything that needs fixing (ControlZ Low Battery Report and orphan repair), grouped by the nature of the fault, one row per device:
+
+- **Not responding**: devices that are unavailable, with how long ("Unavailable for 3h · 2 entities"), longest first.
+- **Battery low**: batteries under the low-battery level, lowest first. Set the level at the top of the page with − and +; it is kept on this device, and admins can **Save … for everyone** (`battery_threshold`). The All Rooms maintenance chip and the Sensors page use the same level.
+- **Orphaned**: entities Home Assistant still keeps but whose integration no longer provides them (Home Assistant marks them `restored`). Remove them under Settings → Entities, or fix the integration.
+- **Not in a room**: devices with no area, so no room page shows them.
+
+Tap a row for the device's details. Admins can **Ignore** a device you already know about (saved for everyone as `attention_ignore`); ignored devices are listed under **Ignored** to bring back. With the sidebar, the page shows a red count. Turn it off with `attention_view: false`.
+
+![Needs Attention](https://raw.githubusercontent.com/brientim/controlz-ha/main/dev/screenshots/needs-attention.png)
+
 ### House pages: coverings, cameras, sensors and weather
 
 Like ControlZ's system rooms, the dashboard adds a page for each of these when Home Assistant has something to show (turn one off with `coverings_view`, `cameras_view`, `sensors_view` or `weather_view: false`):
@@ -187,6 +215,7 @@ Download `controlz-ha.js` from the [latest release](https://github.com/brientim/
 | `custom:controlz-room-card` | Room tile for one area. Green chip = lights on (lights only, not switches/outlets), orange = outlets on, blue = coverings open. Rooms with lights and coverings control both. |
 | `custom:controlz-room-grid` | A full room page: status chips, room tile, filters, then Scenes, Lights, Window Coverings, Climate, Media, Security, Cameras, Sensors, Automations and Other. |
 | `custom:controlz-home-grid` | All Rooms: security banner (tap for the device list and history), All / On / Off filter, All lights off, Announce, maintenance chip, house-wide scenes & presets, and a room tile per area. |
+| `custom:controlz-dashtop` | Dashtop: greeting, status chips, clock and weather, today's calendar, a to-do list, the week and your own tiles. |
 | `custom:controlz-house-grid` | A house page (`page: coverings`, `cameras` or `sensors`): every covering, camera or sensor by room. |
 | `custom:controlz-weather-grid` | Weather: now, the next 24 hours, the next 7 days and the sun (`weather_entity` optional). |
 | `custom:controlz-favorites-grid` | Favorites: your favorite rooms, scenes and devices (per Home Assistant user). |
@@ -273,12 +302,15 @@ strategy:
   confirm_scenes: [script.away]    # scenes / presets that ask before running (their sheet sets this)
   favorites_view: true             # false = no Favorites view
   automations_view: true           # false = no Automations view (room pages still list automations)
+  dashtop_view: true               # false = no Dashtop
+  attention_view: true             # false = no Needs Attention page
+  attention_ignore: [device:abc123] # devices Needs Attention leaves out (its Ignore button writes this)
   coverings_view: true             # false = no Window Coverings page
   cameras_view: true               # false = no Cameras page
   sensors_view: true               # false = no Sensors page
   weather_view: true               # false = no Weather page
   weather_entity: weather.home     # which weather entity the Weather page shows (default: the first)
-  battery_threshold: 20            # All Rooms maintenance chip: batteries under this % are low
+  battery_threshold: 20            # batteries under this % are low (Needs Attention sets it; each device can choose its own)
   show_maintenance: true           # false = no low battery / offline chip
   icon_source: controlz            # controlz | area
   room_icons:                      # per-area icon overrides

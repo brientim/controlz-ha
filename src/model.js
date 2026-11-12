@@ -746,7 +746,7 @@ export function maintenanceReport(hass, { threshold = 20, exclude = [] } = {}) {
   for (const [entityId, entry] of Object.entries(hass?.entities || {})) {
     if (skip.has(entityId) || entry.hidden || entry.hidden_by || entry.disabled_by) continue;
     const stateObj = hass.states?.[entityId];
-    if (!stateObj) continue;
+    if (!stateObj || stateObj.attributes?.restored) continue;
     const areaId = areaOfEntity(hass, entityId);
     const where = areaId ? hass.areas?.[areaId]?.name || areaId : "";
     const deviceName = entry.device_id ? hass.devices?.[entry.device_id]?.name_by_user || hass.devices?.[entry.device_id]?.name : null;
@@ -770,6 +770,99 @@ export function maintenanceReport(hass, { threshold = 20, exclude = [] } = {}) {
   lowBattery.sort((a, b) => (a.level ?? -1) - (b.level ?? -1) || a.name.localeCompare(b.name));
   unavailable.sort((a, b) => a.name.localeCompare(b.name));
   return { lowBattery, unavailable, count: lowBattery.length + unavailable.length, threshold };
+}
+
+/** Needs Attention groups, in the order the page shows them (grouped by the nature of the fault). */
+export const ATTENTION_GROUPS = Object.freeze([
+  { id: "offline", title: "Not responding", icon: "⚠️", hint: "Unavailable in Home Assistant: check power, the network or the hub it uses." },
+  { id: "battery", title: "Battery low", icon: "🔋", hint: "Batteries under your low-battery level." },
+  { id: "orphaned", title: "Orphaned", icon: "👻", hint: "Still in Home Assistant, but its integration no longer provides it. Remove it under Settings → Entities, or fix the integration." },
+  { id: "unassigned", title: "Not in a room", icon: "🏷️", hint: "Devices with no area, so no room page shows them. Give them an area in Home Assistant." },
+]);
+
+const DEVICE_KINDS = new Set([
+  KIND.LIGHT, KIND.SWITCH, KIND.OUTLET, KIND.COVER, KIND.SECURITY, KIND.MOTION, KIND.SENSOR,
+  KIND.CLIMATE, KIND.FAN, KIND.CAMERA, KIND.MEDIA, KIND.OTHER,
+]);
+
+/**
+ * Needs Attention report: devices not responding, orphaned entities (`restored`: their
+ * integration no longer provides them), batteries under `threshold` % and devices in no area.
+ * One row per device (entities without a device get their own row), keyed `device:<id>` or
+ * `entity:<id>`; keys in `ignore` go to `ignored` instead. Hidden, disabled and `exclude`d entities never count.
+ */
+export function attentionReport(hass, { threshold = 20, exclude = [], ignore = [], now = Date.now() } = {}) {
+  const skip = new Set(exclude || []);
+  const ignored = new Set(ignore || []);
+  const rows = new Map();
+  const add = (group, entityId, entry, patch) => {
+    const key = entry.device_id ? `device:${entry.device_id}` : `entity:${entityId}`;
+    const id = `${group}|${key}`;
+    const device = entry.device_id ? hass.devices?.[entry.device_id] : null;
+    const areaId = areaOfEntity(hass, entityId);
+    const row = rows.get(id) || {
+      group, key, entity_id: entityId, entities: [],
+      name: device?.name_by_user || device?.name || friendlyName(hass, entityId),
+      area: areaId ? hass.areas?.[areaId]?.name || areaId : "",
+    };
+    row.entities.push(entityId);
+    Object.assign(row, patch(row));
+    rows.set(id, row);
+  };
+  for (const [entityId, entry] of Object.entries(hass?.entities || {})) {
+    if (skip.has(entityId) || entry.hidden || entry.hidden_by || entry.disabled_by) continue;
+    const s = hass.states?.[entityId];
+    if (!s) continue;
+    const dc = s.attributes?.device_class;
+    const domain = domainOf(entityId);
+    if (s.attributes?.restored) {
+      add("orphaned", entityId, entry, () => ({ detail: "No longer provided by its integration" }));
+      continue;
+    }
+    if (dc === "battery" && domain === "sensor" && !isUnavailable(s)) {
+      const level = Number(s.state);
+      if (Number.isFinite(level) && level < threshold) {
+        add("battery", entityId, entry, (row) => {
+          const lowest = Math.min(row.level ?? Infinity, Math.round(level));
+          return { level: lowest, detail: `${lowest}%` };
+        });
+      }
+      continue;
+    }
+    if (dc === "battery" && domain === "binary_sensor") {
+      if (s.state === "on") add("battery", entityId, entry, (row) => ({ level: row.level ?? null, detail: row.level != null ? `${row.level}%` : "Low" }));
+      continue;
+    }
+    const kind = classifyEntity(entityId, s, entry);
+    if (!DEVICE_KINDS.has(kind)) continue;
+    if (s.state === "unavailable") {
+      const since = Date.parse(s.last_changed);
+      add("offline", entityId, entry, (row) => {
+        const first = Math.min(row.since ?? Infinity, Number.isFinite(since) ? since : Infinity);
+        const known = Number.isFinite(first);
+        const ago = known ? relativeTime(new Date(first).toISOString(), now) : "";
+        const how = !ago ? "Unavailable" : ago === "Now" ? "Unavailable just now" : `Unavailable for ${ago.replace(" ago", "")}`;
+        const count = row.entities.length;
+        return { since: known ? first : null, detail: count > 1 ? `${how} · ${count} entities` : how };
+      });
+      continue;
+    }
+    if (!areaOfEntity(hass, entityId)) {
+      add("unassigned", entityId, entry, (row) => ({ detail: row.entities.length > 1 ? `${row.entities.length} entities` : "No room" }));
+    }
+  }
+  const all = [...rows.values()];
+  const shown = all.filter((r) => !ignored.has(r.key));
+  const order = {
+    battery: (a, b) => (a.level ?? -1) - (b.level ?? -1) || a.name.localeCompare(b.name),
+    offline: (a, b) => (a.since ?? 0) - (b.since ?? 0) || a.name.localeCompare(b.name),
+  };
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  const groups = ATTENTION_GROUPS
+    .map((g) => ({ ...g, items: shown.filter((r) => r.group === g.id).sort(order[g.id] || byName) }))
+    .filter((g) => g.items.length);
+  const ignoredRows = all.filter((r) => ignored.has(r.key)).sort(byName);
+  return { groups, count: groups.reduce((n, g) => n + g.items.length, 0), ignored: ignoredRows, threshold };
 }
 
 const average = (values) => values.reduce((a, b) => a + b, 0) / values.length;

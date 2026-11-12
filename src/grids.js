@@ -9,7 +9,7 @@ import {
   FAVORITES_EVENT, favoriteLists, favoriteOrder, isFavorite, loadFavorites, setFavoritesOrder, toggleFavorite,
 } from "./favorites.js";
 import {
-  EDIT_EVENT, HIDDEN_EVENT, HOME_SCENES, NO_AREA, areasOrder, entitiesOrder, hiddenLists, hiddenScenes, isEditing, movedOrder,
+  EDIT_EVENT, HIDDEN_EVENT, HOME_SCENES, NO_AREA, areasOrder, dashboardBatteryThreshold, entitiesOrder, hiddenLists, hiddenScenes, isEditing, movedOrder,
   reorderSubset, roomExcluded, roomTileSizes, roomsChangedThisSession, securityBannerSettings, setAreasOrder, setEditing, setEntitiesOrder,
   setHidden, setRoomExcluded, setRoomTileSize, setScenesHidden,
 } from "./hidden.js";
@@ -22,7 +22,8 @@ import {
   sortedAreas,
 } from "./model.js";
 import {
-  HOME_FILTERS, PREFS_EVENT, ROOM_SIZE_EVENT, collapsedSections, effectiveNav, effectiveRoomSize, effectiveScale, effectiveSize, homeFilter, isCollapsed,
+  HOME_FILTERS, PREFS_EVENT, ROOM_SIZE_EVENT, collapsedSections, effectiveBatteryThreshold, effectiveNav, effectiveRoomSize, effectiveScale,
+  effectiveSize, homeFilter, isCollapsed,
   roomFilter, roomSection,
   takeStartPage, toggleCollapsed, writePrefs,
 } from "./prefs.js";
@@ -47,12 +48,13 @@ export const hiddenOptions = (config) => ({
   ...(config.confirm_scenes ? { confirm_scenes: config.confirm_scenes } : {}),
   ...(config.hide_scenes ? { hide_scenes: config.hide_scenes } : {}),
   ...(config.room_tile_sizes ? { room_tile_sizes: config.room_tile_sizes } : {}),
+  ...(config.attention_ignore ? { attention_ignore: config.attention_ignore } : {}),
 });
 
 /** Security banner scope and placement, forwarded to every page that can show the banner. */
 export const securityOptions = (config) => Object.fromEntries(
   ["security_include", "security_exclude", "security_banner", "security_banner_rooms", "favorites_view", "automations_view",
-    "coverings_view", "cameras_view", "sensors_view", "weather_view", "weather_entity"]
+    "attention_view", "coverings_view", "cameras_view", "sensors_view", "weather_view", "weather_entity"]
     .filter((key) => config[key] != null)
     .map((key) => [key, config[key]]),
 );
@@ -953,7 +955,9 @@ export class HomeGrid extends CzPage {
   }
 
   _maintenance() {
-    return maintenanceReport(this._hass, { threshold: Number(this._config.battery_threshold) || 20, exclude: this._config.hide_entities });
+    return maintenanceReport(this._hass, {
+      threshold: effectiveBatteryThreshold(dashboardBatteryThreshold(this._config)), exclude: this._config.hide_entities,
+    });
   }
 
   structureKey() {
@@ -1052,8 +1056,21 @@ export class HomeGrid extends CzPage {
       ${m.unavailable.length ? `<div class="sheet-section"><div class="section-label">Offline (${m.unavailable.length})</div>
         ${m.unavailable.map((i) => this._row(i, "#6b7280", "offline")).join("")}</div>` : ""}
       ${m.count ? "" : `<p class="sec-empty">All batteries are fine and every device is online.</p>`}
-      <p class="sec-scope">Batteries under ${m.threshold}% (battery_threshold) and devices that are unavailable. Tap one for details.</p>`;
+      ${this._config.attention_view !== false && this._config.editable ? `<div class="sheet-section"><div class="btn-wrap">
+        <button type="button" class="btn secondary" data-action="open-attention">⚠ Open Needs Attention</button></div></div>` : ""}
+      <p class="sec-scope">Batteries under ${m.threshold}% and devices that are unavailable. Tap one for details; Needs Attention also lists orphaned devices and devices in no room, and sets the low-battery level.</p>`;
     return sheetFrame({ title: "Maintenance", subtitle: m.count ? `${m.count} need attention` : "Nothing needs attention", body });
+  }
+
+  get actions() {
+    return {
+      ...super.actions,
+      "open-attention": () => {
+        this._sheet?.close();
+        if (this._config.select_rooms) fireEvent(this, "controlz-select-area", { area: "__attention" });
+        else navigate(`${dashboardBase()}/attention`);
+      },
+    };
   }
 }
 

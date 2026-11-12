@@ -19,10 +19,12 @@ export const helpLinks = (version) => [
 ];
 
 export const WHATS_NEW = {
-  version: "0.8.2",
+  version: "0.9.0",
   items: [
-    "Each room can have its own tile size: on a room's page, View → This room (Same, Large, Thin or Compact), saved on this device.",
-    "Admins can set a room's tile size for everyone (View → This room for everyone, or room_tile_sizes in YAML).",
+    "Dashtop: the home at a glance — greeting and status chips, clock and weather, today's calendar, a to-do list, the week and your own tiles, over a live sky.",
+    "Dashtop is yours: ✎ Customize picks the sections, calendars, to-do lists and tiles for your Home Assistant user.",
+    "Needs Attention: devices not responding, batteries low, orphaned entities and devices in no room, grouped by fault, with Ignore for admins.",
+    "Set the low-battery level on Needs Attention (this device, or for everyone); the maintenance chip and Sensors use it too.",
   ],
 };
 
@@ -80,6 +82,29 @@ export const HELP_SECTIONS = [
     ],
     image: "scene-capture.png",
     anchor: "scenes-and-presets",
+  },
+  {
+    id: "dashtop",
+    title: "Dashtop",
+    text: "The home at a glance: a greeting with status chips (security, Needs Attention, lights on), a big clock and the weather, today's calendar, a to-do list, the week ahead and your own tiles, over a sky that follows the sun and the weather.",
+    steps: [
+      "Tap a chip: the security list, Needs Attention, or the rooms with lights on.",
+      "✎ Customize chooses the sections, calendars, to-do lists and tiles; it is yours, on every device.",
+      "View → Start on Dashtop makes this device open on it.",
+    ],
+    image: "dashtop.png",
+    anchor: "dashtop",
+  },
+  {
+    id: "attention",
+    title: "Needs Attention",
+    text: "One page for everything that needs fixing, grouped by the fault: devices not responding, batteries low, orphaned entities (no longer provided by their integration) and devices that are in no room.",
+    steps: [
+      "Set the low-battery level with − and + at the top (this device; admins can save it for everyone).",
+      "Tap a device for its details. Admins can Ignore one you already know about.",
+    ],
+    image: "needs-attention.png",
+    anchor: "needs-attention",
   },
   {
     id: "house",

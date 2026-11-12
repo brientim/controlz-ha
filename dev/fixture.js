@@ -42,6 +42,7 @@ export function makeFixture() {
     dev_front_lock: { id: "dev_front_lock", area_id: "entrance", name: "Front Door Lock" },
     dev_kitchen_hue: { id: "dev_kitchen_hue", area_id: "kitchen", name: "Kitchen Bench" },
     dev_garage_lock: { id: "dev_garage_lock", area_id: "garage", name: "Garage Side Lock" },
+    dev_patio_sensor: { id: "dev_patio_sensor", area_id: "entrance", name: "Patio Sensor" },
   };
   const cameraSvg = `data:image/svg+xml,${encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#64748b"/><stop offset="1" stop-color="#1e293b"/></linearGradient></defs><rect width="640" height="360" fill="url(#g)"/><rect x="250" y="90" width="140" height="230" fill="#334155" stroke="#94a3b8" stroke-width="6"/><circle cx="365" cy="210" r="8" fill="#e2e8f0"/><rect x="0" y="320" width="640" height="40" fill="#0f172a"/></svg>`
@@ -156,6 +157,19 @@ export function makeFixture() {
       state: "on", attributes: { friendly_name: "Leak Alert", id: "1700000000003", last_triggered: ago(4320), mode: "single", current: 0 },
     },
 
+    "calendar.family": { state: "off", attributes: { friendly_name: "Family", message: "", all_day: false } },
+    "calendar.work": { state: "off", attributes: { friendly_name: "Work", message: "", all_day: false } },
+    "todo.shopping_list": { state: "3", attributes: { friendly_name: "Shopping list", supported_features: 15 } },
+    "todo.chores": { state: "2", attributes: { friendly_name: "Chores", supported_features: 15 } },
+    "binary_sensor.patio_motion": {
+      state: "unavailable", last_changed: ago(185), attributes: { friendly_name: "Patio Motion", device_class: "motion" },
+    },
+    "sensor.patio_temperature": {
+      state: "unavailable", last_changed: ago(190), attributes: { friendly_name: "Patio Temperature", device_class: "temperature", unit_of_measurement: "°C" },
+    },
+    "switch.old_porch_light": {
+      state: "unavailable", attributes: { friendly_name: "Old Porch Light", restored: true, supported_features: 0 },
+    },
     "media_player.kitchen_speaker": {
       state: "playing",
       attributes: {
@@ -239,6 +253,9 @@ export function makeFixture() {
     "light.unassigned": e(null),
     "automation.leak_alert": e(null),
 
+    "binary_sensor.patio_motion": onDevice("dev_patio_sensor"),
+    "sensor.patio_temperature": onDevice("dev_patio_sensor"),
+    "switch.old_porch_light": e("entrance"),
     "media_player.kitchen_speaker": e("kitchen"),
     "script.good_morning": e(null),
     "scene.house_all_off": e(null),

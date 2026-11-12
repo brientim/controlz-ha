@@ -110,6 +110,40 @@ const seeded = (text) => {
   };
 };
 
+/** Fake calendar events around today (local times), as `/api/calendars/<entity>` returns them. */
+function mockCalendar(entityId) {
+  const day = new Date();
+  day.setHours(0, 0, 0, 0);
+  const at = (days, h, m = 0) => new Date(day.getTime() + days * 86_400_000 + (h * 60 + m) * 60_000);
+  const date = (days) => {
+    const d = at(days, 12);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const soon = new Date(Date.now() + 40 * 60_000);
+  soon.setSeconds(0, 0);
+  const timed = (summary, start, minutes, location = "") => ({
+    summary, location, start: { dateTime: start.toISOString() }, end: { dateTime: new Date(start.getTime() + minutes * 60_000).toISOString() },
+  });
+  const allDay = (summary, days, length = 1) => ({ summary, start: { date: date(days) }, end: { date: date(days + length) } });
+  if (entityId === "calendar.work") {
+    return [timed("Team sync", at(0, 9, 30), 30, "Teams"), timed("Planning", at(1, 9), 60), timed("1:1 with Sam", at(3, 15), 30), timed("Release review", at(4, 11), 45)];
+  }
+  return [
+    allDay("Bin night", 0), timed("School pickup", soon, 30, "Primary school"), timed("Dinner with Alex", at(1, 18, 30), 120, "Bistro"),
+    allDay("Mum's birthday", 2), timed("Swimming lesson", at(2, 8), 45), timed("Car service", at(4, 10), 90, "Garage"), allDay("Long weekend", 5, 2),
+  ];
+}
+
+const TODOS_KEY = "controlz-harness-todos";
+const SEED_TODOS = {
+  "todo.shopping_list": [
+    { uid: "1", summary: "Milk", status: "needs_action" }, { uid: "2", summary: "Coffee beans", status: "needs_action" },
+    { uid: "3", summary: "Batteries (AA)", status: "needs_action", due: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10) },
+    { uid: "4", summary: "Bread", status: "completed" },
+  ],
+  "todo.chores": [{ uid: "1", summary: "Water the plants", status: "needs_action" }, { uid: "2", summary: "Take the bins out", status: "needs_action" }],
+};
+
 /** Fake `weather/subscribe_forecast` data: 48 hours or 7 days from now. */
 function mockForecast(type) {
   const rnd = seeded(type);
@@ -182,6 +216,7 @@ function mockHistory(states, { start_time, end_time, entity_ids = [] }) {
 export function createMockHass(onChange) {
   const fixture = makeFixture();
   const calls = [];
+  const todoItems = () => session.get(TODOS_KEY, structuredClone(SEED_TODOS));
   const scriptTimers = {};
   let hass;
 
@@ -241,6 +276,18 @@ export function createMockHass(onChange) {
       s.state = (a.current_position ?? 0) > 0 ? "open" : "closed";
     }),
     lock: (service, _data, id) => patch(id, (s) => { s.state = service === "lock" ? "locked" : "unlocked"; }),
+    todo: (service, data, id) => {
+      const all = todoItems();
+      const list = all[id] || [];
+      if (service === "add_item") list.push({ uid: String(Date.now()), summary: data.item, status: "needs_action" });
+      if (service === "update_item") {
+        const hit = list.find((i) => i.uid === data.item || i.summary === data.item);
+        if (hit && data.status) hit.status = data.status;
+      }
+      all[id] = list;
+      session.set(TODOS_KEY, all);
+      patch(id, (s) => { s.state = String(list.filter((i) => i.status !== "completed").length); });
+    },
     media_player: (service, data, id) => patch(id, (s, a) => {
       if (service === "media_play_pause") s.state = s.state === "playing" ? "paused" : "playing";
       if (service === "turn_off") s.state = "off";
@@ -310,6 +357,11 @@ export function createMockHass(onChange) {
 
   const callApi = async (method, path, body) => {
     calls.push({ domain: "api", service: `${method} ${path}`, data: body ?? {} });
+    const calendar = /^calendars\/([^?]+)/.exec(path);
+    if (calendar) {
+      await new Promise((r) => setTimeout(r, 60));
+      return mockCalendar(decodeURIComponent(calendar[1]));
+    }
     const match = /^config\/(automation|scene|script)\/config\/(.+)$/.exec(path);
     if (!match) throw new Error(`mock: unsupported API ${method} ${path}`);
     const [, domain] = match;
@@ -332,6 +384,7 @@ export function createMockHass(onChange) {
   };
 
   const callWS = async (msg) => {
+    if (msg.type === "todo/item/list") return { items: structuredClone(todoItems()[msg.entity_id] || []) };
     if (msg.type === "history/history_during_period") {
       calls.push({ domain: "ws", service: msg.type, data: { entity_ids: msg.entity_ids.length } });
       await new Promise((r) => setTimeout(r, 80));

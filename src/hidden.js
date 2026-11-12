@@ -20,6 +20,8 @@ let excludeOverride = null;
 let confirmOverride = null;
 let scenesOverride = null;
 let roomSizesOverride = null;
+let ignoreOverride = null;
+let thresholdOverride;
 let editing = false;
 
 /** Key for automations without a room in `entities_order`. */
@@ -174,6 +176,38 @@ export async function setRoomExcluded(hass, entityId, exclude) {
   excludeOverride = strategy.room_exclude || [];
   window.dispatchEvent(new CustomEvent(HIDDEN_EVENT, { detail: { room_exclude: excludeOverride } }));
   return excludeOverride;
+}
+
+/** Devices admins told Needs Attention to ignore (`attention_ignore`: `device:<id>` / `entity:<id>` keys). */
+export const attentionIgnored = (config = {}) => new Set(ignoreOverride || config.attention_ignore || []);
+
+export async function setAttentionIgnored(hass, key, ignore) {
+  const strategy = await saveStrategy(hass, "change what Needs Attention ignores", (s) => {
+    const list = new Set(s.attention_ignore || []);
+    if (ignore) list.add(key);
+    else list.delete(key);
+    s.attention_ignore = [...list].sort();
+    if (!s.attention_ignore.length) delete s.attention_ignore;
+    return s;
+  });
+  ignoreOverride = strategy.attention_ignore || [];
+  window.dispatchEvent(new CustomEvent(HIDDEN_EVENT, { detail: { attention_ignore: ignoreOverride } }));
+  return ignoreOverride;
+}
+
+/** The dashboard's low-battery level: the one saved this session, else `battery_threshold`. */
+export const dashboardBatteryThreshold = (config = {}) => (thresholdOverride === undefined ? config.battery_threshold : thresholdOverride);
+
+/** Save the low-battery level (%) for everyone (`battery_threshold`; null = back to 20). */
+export async function setBatteryThreshold(hass, value) {
+  const strategy = await saveStrategy(hass, "set the low-battery level", (s) => {
+    if (value == null) delete s.battery_threshold;
+    else s.battery_threshold = Number(value);
+    return s;
+  });
+  thresholdOverride = strategy.battery_threshold ?? null;
+  window.dispatchEvent(new CustomEvent(HIDDEN_EVENT, { detail: { battery_threshold: thresholdOverride } }));
+  return thresholdOverride;
 }
 
 /** Tile size per room for everyone on the dashboard (`room_tile_sizes: { office: compact }`). */

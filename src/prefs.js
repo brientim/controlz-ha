@@ -40,6 +40,18 @@ export function effectiveSize(configSize) {
   return SIZES.includes(configSize) ? configSize : "large";
 }
 
+/** Low-battery level (%) on this device (Needs Attention), else the dashboard's `battery_threshold`, else 20. */
+export const BATTERY_MIN = 5;
+export const BATTERY_MAX = 95;
+const validThreshold = (v) => Number.isFinite(Number(v)) && Number(v) >= BATTERY_MIN && Number(v) <= BATTERY_MAX && v !== null && v !== "";
+
+/** `value` as a low-battery level when it is one (5–95), else `fallback`. */
+export const batteryThresholdOr = (value, fallback = 20) => (validThreshold(value) ? Number(value) : fallback);
+
+export function effectiveBatteryThreshold(configThreshold) {
+  return batteryThresholdOr(readPrefs().battery_threshold, batteryThresholdOr(configThreshold));
+}
+
 /** Event the View menu fires (admins) to save a room's tile size for everyone: `{ area, size }` (size null = clear). */
 export const ROOM_SIZE_EVENT = "controlz-room-size";
 
